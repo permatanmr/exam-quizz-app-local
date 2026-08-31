@@ -98,5 +98,11 @@ export const saveAnswerSchema = z.object({
 });
 
 export const manualScoreUpdateSchema = z.object({
-  score: z.number().min(0, "Nilai minimal 0").max(100, "Nilai maksimal 100"),
+  score: z
+    .number()
+    .min(0, "Nilai minimal 0")
+    .max(100, "Nilai maksimal 100")
+    .optional(),
+  student_name: z.string().trim().min(2, "Nama minimal 2 karakter").optional(),
+  student_nim: z.string().trim().min(2, "NIM minimal 2 karakter").optional(),
 });

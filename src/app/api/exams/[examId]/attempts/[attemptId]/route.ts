@@ -20,11 +20,16 @@ export async function GET(_request: Request, { params }: Params) {
     .get(attemptId, examId) as AttemptRow | undefined;
 
   if (!attempt) {
-    return NextResponse.json({ error: "Data ujian tidak ditemukan" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Data ujian tidak ditemukan" },
+      { status: 404 },
+    );
   }
 
   const questions = db
-    .prepare("SELECT * FROM question WHERE exam_id = ? ORDER BY order_index ASC")
+    .prepare(
+      "SELECT * FROM question WHERE exam_id = ? ORDER BY order_index ASC",
+    )
     .all(examId) as QuestionRow[];
 
   const answerRows = db
@@ -62,13 +67,16 @@ export async function PATCH(request: Request, { params }: Params) {
     .get(attemptId, examId) as AttemptRow | undefined;
 
   if (!attempt) {
-    return NextResponse.json({ error: "Data ujian tidak ditemukan" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Data ujian tidak ditemukan" },
+      { status: 404 },
+    );
   }
 
   if (attempt.status !== "submitted") {
     return NextResponse.json(
       { error: "Nilai hanya dapat diubah untuk attempt yang sudah selesai." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -77,17 +85,71 @@ export async function PATCH(request: Request, { params }: Params) {
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Data tidak valid" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  const score = Math.round(parsed.data.score * 100) / 100;
+  const updates: string[] = [];
+  const values: unknown[] = [];
 
-  db.prepare("UPDATE attempt SET score = ? WHERE id = ?").run(score, attemptId);
+  if (parsed.data.score !== undefined) {
+    const score = Math.round(parsed.data.score * 100) / 100;
+    updates.push("score = ?");
+    values.push(score);
+  }
+
+  if (parsed.data.student_name !== undefined) {
+    updates.push("student_name = ?");
+    values.push(parsed.data.student_name.trim());
+  }
+
+  if (parsed.data.student_nim !== undefined) {
+    updates.push("student_nim = ?");
+    values.push(parsed.data.student_nim.trim());
+  }
+
+  if (updates.length === 0) {
+    return NextResponse.json(
+      { error: "Tidak ada data yang diubah." },
+      { status: 400 },
+    );
+  }
+
+  db.prepare(`UPDATE attempt SET ${updates.join(", ")} WHERE id = ?`).run(
+    ...values,
+    attemptId,
+  );
 
   const updatedAttempt = db
     .prepare("SELECT * FROM attempt WHERE id = ? AND exam_id = ?")
     .get(attemptId, examId) as AttemptRow;
 
   return NextResponse.json({ attempt: updatedAttempt });
+}
+
+export async function DELETE(_request: Request, { params }: Params) {
+  const auth = await requireDosen();
+  if ("error" in auth) return auth.error;
+
+  const { examId, attemptId } = await params;
+  const owned = getOwnedExam(examId, auth.dosen.id);
+  if ("error" in owned) return owned.error;
+
+  const attempt = db
+    .prepare("SELECT * FROM attempt WHERE id = ? AND exam_id = ?")
+    .get(attemptId, examId) as AttemptRow | undefined;
+
+  if (!attempt) {
+    return NextResponse.json(
+      { error: "Data pengerjaan tidak ditemukan" },
+      { status: 404 },
+    );
+  }
+
+  db.prepare("DELETE FROM attempt WHERE id = ? AND exam_id = ?").run(
+    attemptId,
+    examId,
+  );
+
+  return NextResponse.json({ success: true, deletedAttemptId: attemptId });
 }
