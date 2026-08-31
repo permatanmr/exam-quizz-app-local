@@ -43,7 +43,10 @@ const optionSchema = z.object({
 
 export const questionCreateSchema = z.object({
   text: z.string().trim().min(3, "Pertanyaan minimal 3 karakter"),
-  options: z.array(optionSchema).min(2, "Minimal 2 opsi").max(6, "Maksimal 6 opsi"),
+  options: z
+    .array(optionSchema)
+    .min(2, "Minimal 2 opsi")
+    .max(6, "Maksimal 6 opsi"),
   correct_option_id: z.string().min(1),
   explanation: z.string().trim().optional().default(""),
   points: z.number().min(0).max(1000).optional().default(1),
@@ -53,7 +56,11 @@ export const questionCreateSchema = z.object({
 // PATCH parsial tidak menimpa field yang tidak dikirim dengan nilai default.
 export const questionUpdateSchema = z.object({
   text: z.string().trim().min(3, "Pertanyaan minimal 3 karakter").optional(),
-  options: z.array(optionSchema).min(2, "Minimal 2 opsi").max(6, "Maksimal 6 opsi").optional(),
+  options: z
+    .array(optionSchema)
+    .min(2, "Minimal 2 opsi")
+    .max(6, "Maksimal 6 opsi")
+    .optional(),
   correct_option_id: z.string().min(1).optional(),
   explanation: z.string().trim().optional(),
   points: z.number().min(0).max(1000).optional(),
@@ -61,7 +68,7 @@ export const questionUpdateSchema = z.object({
 
 export const generateQuestionsSchema = z.object({
   topic: z.string().trim().min(3, "Topik minimal 3 karakter"),
-  count: z.number().int().min(1).max(20),
+  count: z.number().int().min(1),
   difficulty: z.enum(["mudah", "sedang", "sulit", "campuran"]),
   numOptions: z.union([z.literal(4), z.literal(5)]),
   context: z.string().trim().max(8000).optional().default(""),
@@ -75,7 +82,7 @@ export const saveGeneratedQuestionsSchema = z.object({
         options: z.array(optionSchema).min(2).max(6),
         correct_option_id: z.string().min(1),
         explanation: z.string().trim().optional().default(""),
-      })
+      }),
     )
     .min(1),
 });
@@ -88,4 +95,8 @@ export const startAttemptSchema = z.object({
 export const saveAnswerSchema = z.object({
   question_id: z.string().min(1),
   selected_option_id: z.string().min(1).nullable(),
+});
+
+export const manualScoreUpdateSchema = z.object({
+  score: z.number().min(0, "Nilai minimal 0").max(100, "Nilai maksimal 100"),
 });

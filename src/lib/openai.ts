@@ -19,7 +19,7 @@ function getClient() {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error(
-      "OPENAI_API_KEY belum diatur di file .env.local. Tambahkan API key OpenAI Anda untuk memakai fitur ini."
+      "OPENAI_API_KEY belum diatur di file .env.local. Tambahkan API key OpenAI Anda untuk memakai fitur ini.",
     );
   }
   return new OpenAI({ apiKey });
@@ -27,25 +27,18 @@ function getClient() {
 
 const OPTION_LETTERS = ["A", "B", "C", "D", "E"];
 
-export async function generateQuestions(
-  input: GenerateQuestionsInput
-): Promise<GeneratedQuestion[]> {
-  const client = getClient();
-  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+export function buildQuestionSchema(input: Pick<GenerateQuestionsInput, "count" | "numOptions">) {
   const letters = OPTION_LETTERS.slice(0, input.numOptions);
 
-  const optionSchemaProps: Record<string, unknown> = {};
-  for (const l of letters) {
-    optionSchemaProps[l] = { type: "string" };
-  }
-
-  const jsonSchema = {
+  return {
     name: "generated_mcq_questions",
     schema: {
       type: "object",
       properties: {
         questions: {
           type: "array",
+          minItems: input.count,
+          maxItems: input.count,
           items: {
             type: "object",
             properties: {
@@ -85,6 +78,34 @@ export async function generateQuestions(
     },
     strict: true,
   } as const;
+}
+
+export function validateGeneratedQuestionCount(
+  questions: unknown,
+  expectedCount: number,
+): GeneratedQuestion[] {
+  if (!Array.isArray(questions)) {
+    throw new Error(
+      `OpenAI mengembalikan format soal yang tidak valid. Harus ada tepat ${expectedCount} soal.`,
+    );
+  }
+
+  if (questions.length !== expectedCount) {
+    throw new Error(
+      `OpenAI menghasilkan ${questions.length} soal, tetapi aplikasi membutuhkan tepat ${expectedCount} soal.`,
+    );
+  }
+
+  return questions as GeneratedQuestion[];
+}
+
+export async function generateQuestions(
+  input: GenerateQuestionsInput,
+): Promise<GeneratedQuestion[]> {
+  const client = getClient();
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const letters = OPTION_LETTERS.slice(0, input.numOptions);
+  const jsonSchema = buildQuestionSchema(input);
 
   const difficultyText =
     input.difficulty === "campuran"
@@ -92,9 +113,10 @@ export async function generateQuestions(
       : `tingkat kesulitan ${input.difficulty}`;
 
   const prompt = [
-    `Buatkan ${input.count} soal ujian pilihan ganda berbahasa Indonesia tentang topik: "${input.topic}".`,
+    `Buatkan tepat ${input.count} soal ujian pilihan ganda berbahasa Indonesia tentang topik: "${input.topic}".`,
     `Setiap soal memiliki tepat ${input.numOptions} pilihan jawaban (${letters.join(", ")}) dengan hanya satu jawaban yang benar.`,
-    `Gunakan ${difficultyText}.`,
+    `Gunakan ${difficultyText}. Hilangkan awalan jawaban A,B,C,D,E pada teks soal dan opsi jawaban.`,
+    `Pastikan output berisi tepat ${input.count} soal dan tidak lebih atau kurang dari itu.`,
     input.context
       ? `Gunakan materi/konteks referensi berikut sebagai acuan utama pembuatan soal:\n"""\n${input.context}\n"""`
       : "",
@@ -125,6 +147,6 @@ export async function generateQuestions(
     throw new Error("OpenAI tidak mengembalikan hasil. Coba lagi.");
   }
 
-  const parsed = JSON.parse(raw) as { questions: GeneratedQuestion[] };
-  return parsed.questions;
+  const parsed = JSON.parse(raw) as { questions?: unknown };
+  return validateGeneratedQuestionCount(parsed.questions, input.count);
 }

@@ -6,10 +6,18 @@ export const metadata: Metadata = {
   description: "Aplikasi ujian pilihan ganda untuk dosen dan mahasiswa",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="id" className="h-full antialiased">
-      <body className="min-h-full flex flex-col bg-background text-foreground">{children}</body>
+    <html lang='id' className='h-full antialiased' suppressHydrationWarning>
+      <body
+        className='min-h-full flex flex-col bg-background text-foreground'
+        suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }

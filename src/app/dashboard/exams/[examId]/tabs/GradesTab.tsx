@@ -14,6 +14,10 @@ export default function GradesTab({ examId, examCode }: { examId: string; examCo
   const [expanded, setExpanded] = useState<string | null>(null);
   const [detail, setDetail] = useState<DetailItem[] | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [scoreInputs, setScoreInputs] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/exams/${examId}/attempts`);
@@ -41,6 +45,56 @@ export default function GradesTab({ examId, examCode }: { examId: string; examCo
       if (res.ok) setDetail(data.detail);
     } finally {
       setLoadingDetail(false);
+    }
+  }
+
+  function startEdit(a: AttemptRow) {
+    setActionError(null);
+    setEditingId(a.id);
+    setScoreInputs((prev) => ({
+      ...prev,
+      [a.id]: a.score !== null ? a.score.toString() : "0",
+    }));
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setActionError(null);
+  }
+
+  async function saveScore(a: AttemptRow) {
+    const raw = scoreInputs[a.id] ?? "";
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+      setActionError("Nilai harus berupa angka.");
+      return;
+    }
+    if (parsed < 0 || parsed > 100) {
+      setActionError("Nilai harus di antara 0 sampai 100.");
+      return;
+    }
+
+    setActionError(null);
+    setSavingId(a.id);
+    try {
+      const res = await fetch(`/api/exams/${examId}/attempts/${a.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ score: parsed }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setActionError(data.error ?? "Gagal menyimpan nilai.");
+        return;
+      }
+
+      setAttempts((prev) => {
+        if (!prev) return prev;
+        return prev.map((item) => (item.id === a.id ? data.attempt : item));
+      });
+      setEditingId(null);
+    } finally {
+      setSavingId(null);
     }
   }
 
@@ -75,6 +129,9 @@ export default function GradesTab({ examId, examCode }: { examId: string; examCo
           Unduh CSV
         </a>
       </div>
+      {actionError && (
+        <div className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{actionError}</div>
+      )}
 
       {attempts.length === 0 ? (
         <div className="card mt-4 p-10 text-center text-sm text-muted">
@@ -92,6 +149,7 @@ export default function GradesTab({ examId, examCode }: { examId: string; examCo
                 <th className="px-4 py-2 font-medium">Benar</th>
                 <th className="px-4 py-2 font-medium">Nilai</th>
                 <th className="px-4 py-2 font-medium">Waktu Selesai</th>
+                <th className="px-4 py-2 font-medium">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -116,15 +174,63 @@ export default function GradesTab({ examId, examCode }: { examId: string; examCo
                       {a.correct_count !== null ? `${a.correct_count}/${a.total_questions}` : "-"}
                     </td>
                     <td className="px-4 py-2.5 font-semibold">
-                      {a.score !== null ? a.score.toFixed(2) : "-"}
+                      {editingId === a.id ? (
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.01}
+                          value={scoreInputs[a.id] ?? ""}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) =>
+                            setScoreInputs((prev) => ({ ...prev, [a.id]: e.target.value }))
+                          }
+                          className="input h-9 w-28"
+                        />
+                      ) : a.score !== null ? (
+                        a.score.toFixed(2)
+                      ) : (
+                        "-"
+                      )}
                     </td>
                     <td className="px-4 py-2.5 text-muted">
                       {a.submitted_at ? new Date(a.submitted_at).toLocaleString("id-ID") : "-"}
                     </td>
+                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      {a.status === "submitted" ? (
+                        editingId === a.id ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => saveScore(a)}
+                              disabled={savingId === a.id}
+                              className="btn btn-primary px-2 py-1 text-xs"
+                            >
+                              {savingId === a.id ? "Menyimpan..." : "Simpan"}
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              disabled={savingId === a.id}
+                              className="btn btn-secondary px-2 py-1 text-xs"
+                            >
+                              Batal
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => startEdit(a)}
+                            className="btn btn-secondary px-2 py-1 text-xs"
+                          >
+                            Edit Nilai
+                          </button>
+                        )
+                      ) : (
+                        <span className="text-xs text-muted">-</span>
+                      )}
+                    </td>
                   </tr>
                   {expanded === a.id && (
                     <tr>
-                      <td colSpan={6} className="bg-gray-50 px-4 py-4">
+                      <td colSpan={7} className="bg-gray-50 px-4 py-4">
                         {loadingDetail && (
                           <p className="text-sm text-muted">Memuat jawaban...</p>
                         )}
