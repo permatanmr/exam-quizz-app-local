@@ -40,16 +40,17 @@ export async function POST(request: Request) {
   const now = nowIso();
 
   db.prepare(
-    `INSERT INTO exam (id, dosen_id, title, description, code, duration_minutes,
+    `INSERT INTO exam (id, dosen_id, title, description, code, language, duration_minutes,
       shuffle_questions, shuffle_options, allow_retake, show_result_to_student,
       status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
   ).run(
     id,
     auth.dosen.id,
     data.title,
     data.description,
     code,
+    data.language,
     data.duration_minutes,
     1,
     data.shuffle_options ? 1 : 0,

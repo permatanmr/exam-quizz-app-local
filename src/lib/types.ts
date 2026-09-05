@@ -20,9 +20,14 @@ export type Question = Omit<QuestionRow, "options"> & {
   options: QuestionOption[];
 };
 
-export type QuestionPublic = Omit<Question, "correct_option_id" | "explanation"> & {
+export type QuestionPublic = Omit<
+  Question,
+  "correct_option_id" | "explanation"
+> & {
   correct_option_id?: never;
 };
+
+export type ExamLanguage = "indonesia" | "inggris" | "korea" | "jepang";
 
 export type ExamRow = {
   id: string;
@@ -30,6 +35,7 @@ export type ExamRow = {
   title: string;
   description: string;
   code: string;
+  language: ExamLanguage;
   duration_minutes: number;
   shuffle_questions: number;
   shuffle_options: number;

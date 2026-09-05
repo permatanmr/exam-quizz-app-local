@@ -11,12 +11,19 @@ type Draft = {
   include: boolean;
 };
 
-export default function GenerateTab({ examId }: { examId: string }) {
+export default function GenerateTab({
+  examId,
+  examLanguage,
+}: {
+  examId: string;
+  examLanguage: "indonesia" | "inggris" | "korea" | "jepang";
+}) {
   const [topic, setTopic] = useState("");
   const [count, setCount] = useState(5);
   const [difficulty, setDifficulty] = useState<
     "mudah" | "sedang" | "sulit" | "campuran"
   >("sedang");
+  const [language, setLanguage] = useState(examLanguage);
   const [numOptions, setNumOptions] = useState<4 | 5>(4);
   const [context, setContext] = useState("");
   const [loading, setLoading] = useState(false);
@@ -35,7 +42,14 @@ export default function GenerateTab({ examId }: { examId: string }) {
       const res = await fetch(`/api/exams/${examId}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, count, difficulty, numOptions, context }),
+        body: JSON.stringify({
+          topic,
+          count,
+          difficulty,
+          numOptions,
+          language,
+          context,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -135,7 +149,7 @@ export default function GenerateTab({ examId }: { examId: string }) {
               placeholder='Normalisasi basis data (1NF-3NF)'
             />
           </div>
-          <div className='grid grid-cols-2 gap-4 sm:grid-cols-3'>
+          <div className='grid grid-cols-2 gap-4 sm:grid-cols-4'>
             <div>
               <label className='label'>Jumlah Soal</label>
               <input
@@ -158,6 +172,26 @@ export default function GenerateTab({ examId }: { examId: string }) {
                 <option value='sedang'>Sedang</option>
                 <option value='sulit'>Sulit</option>
                 <option value='campuran'>Campuran</option>
+              </select>
+            </div>
+            <div>
+              <label className='label'>Bahasa</label>
+              <select
+                className='input'
+                value={language}
+                onChange={(e) =>
+                  setLanguage(
+                    e.target.value as
+                      | "indonesia"
+                      | "inggris"
+                      | "korea"
+                      | "jepang",
+                  )
+                }>
+                <option value='indonesia'>Indonesia</option>
+                <option value='inggris'>Inggris</option>
+                <option value='korea'>Korea</option>
+                <option value='jepang'>Jepang</option>
               </select>
             </div>
             <div>

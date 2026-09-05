@@ -7,13 +7,32 @@ export type GeneratedQuestion = {
   explanation: string;
 };
 
+export type QuestionLanguage = "indonesia" | "inggris" | "korea" | "jepang";
+
 export type GenerateQuestionsInput = {
   topic: string;
   count: number;
   difficulty: "mudah" | "sedang" | "sulit" | "campuran";
   numOptions: 4 | 5;
+  language?: QuestionLanguage;
   context?: string;
 };
+
+export function getLanguagePromptText(
+  language: QuestionLanguage = "indonesia",
+) {
+  switch (language) {
+    case "inggris":
+      return "English";
+    case "korea":
+      return "한국어";
+    case "jepang":
+      return "日本語";
+    case "indonesia":
+    default:
+      return "Bahasa Indonesia";
+  }
+}
 
 function getClient() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -27,7 +46,9 @@ function getClient() {
 
 const OPTION_LETTERS = ["A", "B", "C", "D", "E"];
 
-export function buildQuestionSchema(input: Pick<GenerateQuestionsInput, "count" | "numOptions">) {
+export function buildQuestionSchema(
+  input: Pick<GenerateQuestionsInput, "count" | "numOptions">,
+) {
   const letters = OPTION_LETTERS.slice(0, input.numOptions);
 
   return {
@@ -107,13 +128,14 @@ export async function generateQuestions(
   const letters = OPTION_LETTERS.slice(0, input.numOptions);
   const jsonSchema = buildQuestionSchema(input);
 
+  const languageText = getLanguagePromptText(input.language ?? "indonesia");
   const difficultyText =
     input.difficulty === "campuran"
       ? "tingkat kesulitan bervariasi (campuran mudah, sedang, sulit)"
       : `tingkat kesulitan ${input.difficulty}`;
 
   const prompt = [
-    `Buatkan tepat ${input.count} soal ujian pilihan ganda berbahasa Indonesia tentang topik: "${input.topic}".`,
+    `Buatkan tepat ${input.count} soal ujian pilihan ganda berbahasa ${languageText} tentang topik: "${input.topic}".`,
     `Setiap soal memiliki tepat ${input.numOptions} pilihan jawaban (${letters.join(", ")}) dengan hanya satu jawaban yang benar.`,
     `Gunakan ${difficultyText}. Hilangkan awalan jawaban A,B,C,D,E pada teks soal dan opsi jawaban.`,
     `Pastikan output berisi tepat ${input.count} soal dan tidak lebih atau kurang dari itu.`,
@@ -131,8 +153,7 @@ export async function generateQuestions(
     messages: [
       {
         role: "system",
-        content:
-          "Anda adalah asisten yang membantu dosen membuat soal ujian pilihan ganda berkualitas tinggi dalam Bahasa Indonesia, mengikuti skema JSON yang diberikan secara ketat.",
+        content: `Anda adalah asisten yang membantu dosen membuat soal ujian pilihan ganda berkualitas tinggi dalam ${languageText}, mengikuti skema JSON yang diberikan secara ketat.`,
       },
       { role: "user", content: prompt },
     ],

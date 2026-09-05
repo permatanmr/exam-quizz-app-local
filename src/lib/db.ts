@@ -42,6 +42,7 @@ function migrate() {
       title TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
       code TEXT UNIQUE NOT NULL,
+      language TEXT NOT NULL DEFAULT 'indonesia',
       duration_minutes INTEGER NOT NULL DEFAULT 60,
       shuffle_questions INTEGER NOT NULL DEFAULT 1,
       shuffle_options INTEGER NOT NULL DEFAULT 0,
@@ -93,6 +94,15 @@ function migrate() {
     CREATE INDEX IF NOT EXISTS idx_attempt_exam ON attempt(exam_id);
     CREATE INDEX IF NOT EXISTS idx_attempt_answer_attempt ON attempt_answer(attempt_id);
   `);
+
+  const examColumns = db.prepare("PRAGMA table_info(exam)").all() as {
+    name: string;
+  }[];
+  if (!examColumns.some((column) => column.name === "language")) {
+    db.exec(
+      "ALTER TABLE exam ADD COLUMN language TEXT NOT NULL DEFAULT 'indonesia'",
+    );
+  }
 
   db.exec("UPDATE exam SET shuffle_questions = 1 WHERE shuffle_questions != 1");
 }

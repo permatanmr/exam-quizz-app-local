@@ -38,12 +38,13 @@ export async function PATCH(request: Request, { params }: Params) {
   const current = owned.exam;
 
   db.prepare(
-    `UPDATE exam SET title = ?, description = ?, duration_minutes = ?,
+    `UPDATE exam SET title = ?, description = ?, language = ?, duration_minutes = ?,
       shuffle_questions = ?, shuffle_options = ?, allow_retake = ?,
       show_result_to_student = ?, status = ?, updated_at = ? WHERE id = ?`,
   ).run(
     d.title ?? current.title,
     d.description ?? current.description,
+    d.language ?? current.language,
     d.duration_minutes ?? current.duration_minutes,
     1,
     d.shuffle_options !== undefined

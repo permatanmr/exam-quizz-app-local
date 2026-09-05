@@ -11,9 +11,17 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password wajib diisi"),
 });
 
+export const examLanguageSchema = z.enum([
+  "indonesia",
+  "inggris",
+  "korea",
+  "jepang",
+]);
+
 export const examCreateSchema = z.object({
   title: z.string().trim().min(3, "Judul minimal 3 karakter"),
   description: z.string().trim().optional().default(""),
+  language: examLanguageSchema.optional().default("indonesia"),
   duration_minutes: z.number().int().min(1).max(600),
   shuffle_questions: z.boolean().optional().default(false),
   shuffle_options: z.boolean().optional().default(false),
@@ -28,6 +36,7 @@ export const examCreateSchema = z.object({
 export const examUpdateSchema = z.object({
   title: z.string().trim().min(3, "Judul minimal 3 karakter").optional(),
   description: z.string().trim().optional(),
+  language: examLanguageSchema.optional(),
   duration_minutes: z.number().int().min(1).max(600).optional(),
   shuffle_questions: z.boolean().optional(),
   shuffle_options: z.boolean().optional(),
@@ -71,6 +80,7 @@ export const generateQuestionsSchema = z.object({
   count: z.number().int().min(1),
   difficulty: z.enum(["mudah", "sedang", "sulit", "campuran"]),
   numOptions: z.union([z.literal(4), z.literal(5)]),
+  language: examLanguageSchema.optional().default("indonesia"),
   context: z.string().trim().max(8000).optional().default(""),
 });
 

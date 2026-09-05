@@ -18,15 +18,19 @@ export async function POST(request: Request, { params }: Params) {
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Data tidak valid" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   try {
-    const questions = await generateQuestions(parsed.data);
+    const questions = await generateQuestions({
+      ...parsed.data,
+      language: parsed.data.language ?? owned.exam.language,
+    });
     return NextResponse.json({ questions });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Gagal membuat soal via OpenAI";
+    const message =
+      err instanceof Error ? err.message : "Gagal membuat soal via OpenAI";
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

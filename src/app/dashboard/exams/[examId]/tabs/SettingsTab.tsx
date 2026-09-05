@@ -12,6 +12,7 @@ export default function SettingsTab({
 }) {
   const [title, setTitle] = useState(exam.title);
   const [description, setDescription] = useState(exam.description);
+  const [language, setLanguage] = useState(exam.language);
   const [duration, setDuration] = useState(exam.duration_minutes);
   const [shuffleOptions, setShuffleOptions] = useState(
     exam.shuffle_options === 1,
@@ -36,6 +37,7 @@ export default function SettingsTab({
         body: JSON.stringify({
           title,
           description,
+          language,
           duration_minutes: duration,
           shuffle_questions: true,
           shuffle_options: shuffleOptions,
@@ -86,6 +88,22 @@ export default function SettingsTab({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
+      </div>
+      <div>
+        <label className='label'>Bahasa Soal</label>
+        <select
+          className='input max-w-[14rem]'
+          value={language}
+          onChange={(e) =>
+            setLanguage(
+              e.target.value as "indonesia" | "inggris" | "korea" | "jepang",
+            )
+          }>
+          <option value='indonesia'>Indonesia</option>
+          <option value='inggris'>Inggris</option>
+          <option value='korea'>Korea</option>
+          <option value='jepang'>Jepang</option>
+        </select>
       </div>
       <div>
         <label className='label'>Durasi (menit)</label>
