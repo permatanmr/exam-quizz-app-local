@@ -4,11 +4,17 @@ import { useState } from "react";
 import type { QuestionOption } from "@/lib/types";
 
 type Draft = {
+  type: "multiple_choice" | "coding";
   text: string;
   options: QuestionOption[];
   correct_option_id: string;
   explanation: string;
   include: boolean;
+  language?: "javascript" | "html" | "css";
+  prompt?: string;
+  starter_code?: string;
+  test_cases?: Array<{ input: string; expected_output: string }>;
+  expected_output_type?: "stdout" | "html" | "css";
 };
 
 export default function GenerateTab({
@@ -25,6 +31,12 @@ export default function GenerateTab({
   >("sedang");
   const [language, setLanguage] = useState(examLanguage);
   const [numOptions, setNumOptions] = useState<4 | 5>(4);
+  const [questionType, setQuestionType] = useState<
+    "multiple_choice" | "coding"
+  >("multiple_choice");
+  const [codingLanguage, setCodingLanguage] = useState<
+    "javascript" | "html" | "css"
+  >("javascript");
   const [context, setContext] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +61,8 @@ export default function GenerateTab({
           numOptions,
           language,
           context,
+          questionType,
+          codingLanguage,
         }),
       });
       const data = await res.json();
@@ -58,7 +72,24 @@ export default function GenerateTab({
       }
       setDrafts(
         data.questions.map(
-          (q: Omit<Draft, "include">): Draft => ({ ...q, include: true }),
+          (q: Partial<Draft>): Draft => ({
+            type: q.type ?? "multiple_choice",
+            text: q.text ?? "",
+            options: q.options ?? [
+              { id: "A", text: "" },
+              { id: "B", text: "" },
+              { id: "C", text: "" },
+              { id: "D", text: "" },
+            ],
+            correct_option_id: q.correct_option_id ?? "A",
+            explanation: q.explanation ?? "",
+            include: true,
+            language: q.language ?? "javascript",
+            prompt: q.prompt ?? "",
+            starter_code: q.starter_code ?? "",
+            test_cases: q.test_cases ?? [{ input: "", expected_output: "" }],
+            expected_output_type: q.expected_output_type ?? "stdout",
+          }),
         ),
       );
     } catch {
@@ -149,7 +180,7 @@ export default function GenerateTab({
               placeholder='Normalisasi basis data (1NF-3NF)'
             />
           </div>
-          <div className='grid grid-cols-2 gap-4 sm:grid-cols-4'>
+          <div className='grid grid-cols-2 gap-4 sm:grid-cols-5'>
             <div>
               <label className='label'>Jumlah Soal</label>
               <input
@@ -195,17 +226,50 @@ export default function GenerateTab({
               </select>
             </div>
             <div>
-              <label className='label'>Jumlah Opsi</label>
+              <label className='label'>Jenis Soal</label>
               <select
                 className='input'
-                value={numOptions}
+                value={questionType}
                 onChange={(e) =>
-                  setNumOptions(Number(e.target.value) as 4 | 5)
+                  setQuestionType(
+                    e.target.value as "multiple_choice" | "coding",
+                  )
                 }>
-                <option value={4}>4 opsi</option>
-                <option value={5}>5 opsi</option>
+                <option value='multiple_choice'>Pilihan ganda</option>
+                <option value='coding'>Coding</option>
               </select>
             </div>
+            {questionType === "coding" && (
+              <div>
+                <label className='label'>Bahasa Coding</label>
+                <select
+                  className='input'
+                  value={codingLanguage}
+                  onChange={(e) =>
+                    setCodingLanguage(
+                      e.target.value as "javascript" | "html" | "css",
+                    )
+                  }>
+                  <option value='javascript'>JavaScript</option>
+                  <option value='html'>HTML</option>
+                  <option value='css'>CSS</option>
+                </select>
+              </div>
+            )}
+            {questionType === "multiple_choice" && (
+              <div>
+                <label className='label'>Jumlah Opsi</label>
+                <select
+                  className='input'
+                  value={numOptions}
+                  onChange={(e) =>
+                    setNumOptions(Number(e.target.value) as 4 | 5)
+                  }>
+                  <option value={4}>4 opsi</option>
+                  <option value={5}>5 opsi</option>
+                </select>
+              </div>
+            )}
           </div>
           <div>
             <label className='label'>Materi Referensi (opsional)</label>
@@ -272,31 +336,100 @@ export default function GenerateTab({
                         updateDraft(index, { text: e.target.value })
                       }
                     />
-                    <div className='mt-2 flex flex-col gap-1.5'>
-                      {d.options.map((opt) => (
-                        <div key={opt.id} className='flex items-center gap-2'>
-                          <input
-                            type='radio'
-                            name={`correct-${index}`}
-                            checked={d.correct_option_id === opt.id}
-                            onChange={() =>
-                              updateDraft(index, { correct_option_id: opt.id })
-                            }
-                            className='h-4 w-4'
-                          />
-                          <span className='w-5 shrink-0 text-sm font-bold text-muted'>
-                            {opt.id}.
-                          </span>
-                          <input
+                    {d.type === "coding" ? (
+                      <div className='mt-3 space-y-2 text-sm'>
+                        <div className='grid gap-2 sm:grid-cols-2'>
+                          <div>
+                            <label className='label'>Bahasa</label>
+                            <select
+                              className='input'
+                              value={d.language ?? "javascript"}
+                              onChange={(e) =>
+                                updateDraft(index, {
+                                  language: e.target.value as
+                                    | "javascript"
+                                    | "html"
+                                    | "css",
+                                })
+                              }>
+                              <option value='javascript'>JavaScript</option>
+                              <option value='html'>HTML</option>
+                              <option value='css'>CSS</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className='label'>Output</label>
+                            <select
+                              className='input'
+                              value={d.expected_output_type ?? "stdout"}
+                              onChange={(e) =>
+                                updateDraft(index, {
+                                  expected_output_type: e.target.value as
+                                    | "stdout"
+                                    | "html"
+                                    | "css",
+                                })
+                              }>
+                              <option value='stdout'>stdout</option>
+                              <option value='html'>HTML</option>
+                              <option value='css'>CSS</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className='label'>Instruksi soal</label>
+                          <textarea
                             className='input'
-                            value={opt.text}
+                            rows={3}
+                            value={d.prompt ?? ""}
                             onChange={(e) =>
-                              updateOptionText(index, opt.id, e.target.value)
+                              updateDraft(index, { prompt: e.target.value })
                             }
                           />
                         </div>
-                      ))}
-                    </div>
+                        <div>
+                          <label className='label'>Starter code</label>
+                          <textarea
+                            className='input font-mono'
+                            rows={4}
+                            value={d.starter_code ?? ""}
+                            onChange={(e) =>
+                              updateDraft(index, {
+                                starter_code: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className='mt-2 flex flex-col gap-1.5'>
+                        {d.options.map((opt) => (
+                          <div key={opt.id} className='flex items-center gap-2'>
+                            <input
+                              type='radio'
+                              name={`correct-${index}`}
+                              checked={d.correct_option_id === opt.id}
+                              onChange={() =>
+                                updateDraft(index, {
+                                  correct_option_id: opt.id,
+                                })
+                              }
+                              className='h-4 w-4'
+                            />
+                            <span className='w-5 shrink-0 text-sm font-bold text-muted'>
+                              {opt.id}.
+                            </span>
+                            <input
+                              className='input'
+                              value={opt.text}
+                              onChange={(e) =>
+                                updateOptionText(index, opt.id, e.target.value)
+                              }
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {d.explanation && (
                       <p className='mt-2 text-xs text-muted'>
                         Penjelasan: {d.explanation}

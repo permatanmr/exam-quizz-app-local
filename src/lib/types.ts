@@ -1,11 +1,20 @@
+export type QuestionType = "multiple_choice" | "coding";
+
 export type QuestionOption = {
   id: string; // "A" | "B" | "C" | "D" | "E"
   text: string;
 };
 
+export type CodingTestCase = {
+  input: string;
+  expected_output: string;
+  expectedOutput?: string;
+};
+
 export type QuestionRow = {
   id: string;
   exam_id: string;
+  question_type: QuestionType;
   text: string;
   options: string; // JSON string of QuestionOption[]
   correct_option_id: string;
@@ -13,11 +22,17 @@ export type QuestionRow = {
   order_index: number;
   points: number;
   source: "manual" | "ai";
+  coding_language: string | null;
+  coding_prompt: string | null;
+  coding_starter_code: string | null;
+  coding_test_cases: string | null;
+  coding_expected_output_type: string | null;
   created_at: string;
 };
 
-export type Question = Omit<QuestionRow, "options"> & {
+export type Question = Omit<QuestionRow, "options" | "coding_test_cases"> & {
   options: QuestionOption[];
+  coding_test_cases: CodingTestCase[];
 };
 
 export type QuestionPublic = Omit<
@@ -25,6 +40,7 @@ export type QuestionPublic = Omit<
   "correct_option_id" | "explanation"
 > & {
   correct_option_id?: never;
+  answer_text?: string | null;
 };
 
 export type ExamLanguage = "indonesia" | "inggris" | "korea" | "jepang";

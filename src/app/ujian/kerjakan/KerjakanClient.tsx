@@ -1,14 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { evaluateCodingAnswer } from "@/lib/coding-question";
 
 type PublicQuestion = {
   id: string;
+  question_type: "multiple_choice" | "coding";
   text: string;
   options: { id: string; text: string }[];
   order_index: number;
   selected_option_id: string | null;
+  answer_text: string | null;
+  coding_language?: string | null;
+  coding_prompt?: string | null;
+  coding_starter_code?: string | null;
+  coding_test_cases?: { input: string; expected_output: string }[];
 };
 
 type AttemptState = {
@@ -33,6 +40,110 @@ function formatTime(totalSeconds: number) {
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
 }
 
+function normalizeEscapedCode(value: string) {
+  return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function highlightCodeSnippet(
+  code: string,
+  language: "javascript" | "html" | "css",
+) {
+  const normalized = normalizeEscapedCode(code || "");
+  const escaped = escapeHtml(normalized);
+
+  const escapedSequencePattern = /(\\[nrt\\'"`])/g;
+  const keywordPattern =
+    /\b(const|let|var|function|return|if|else|for|while|new|await|async|true|false|null|undefined|document|window|console|alert|class|extends|import|from|export|return)\b/g;
+  const stringPattern =
+    /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)/g;
+  const numberPattern = /(\b\d+\b)/g;
+  const htmlTagPattern =
+    /(<\/?[a-zA-Z0-9-]+(?:\s+[a-zA-Z-]+="[^"]*"|\s+[a-zA-Z-]+='[^']*'|\s+[a-zA-Z-]+=[^\s>]+|\s*)*>|<\/?[a-zA-Z0-9-]+\s*>)/g;
+  const cssPattern =
+    /(#[0-9a-fA-F]{3,6}|\.[a-zA-Z_-][\w-]*|\b[a-z-]+(?=\s*\{))/g;
+
+  let highlighted = escaped;
+
+  if (language === "html") {
+    highlighted = highlighted.replace(
+      htmlTagPattern,
+      '<span class="text-cyan-400">$1</span>',
+    );
+  } else if (language === "css") {
+    highlighted = highlighted
+      .replace(cssPattern, '<span class="text-violet-300">$1</span>')
+      .replace(
+        /(\{.*?\}|\b[a-z-]+\s*:)/g,
+        '<span class="text-sky-300">$1</span>',
+      );
+  } else {
+    highlighted = highlighted
+      .replace(
+        stringPattern,
+        (match) =>
+          '<span class="text-emerald-300">' +
+          match.replace(
+            escapedSequencePattern,
+            '<span class="text-amber-300">$1</span>',
+          ) +
+          "</span>",
+      )
+      .replace(keywordPattern, '<span class="text-violet-300">$1</span>')
+      .replace(numberPattern, '<span class="text-amber-300">$1</span>')
+      .replace(
+        escapedSequencePattern,
+        '<span class="text-amber-300">$1</span>',
+      );
+  }
+
+  return highlighted.replace(/\n/g, "<br>");
+}
+
+function buildLivePreviewDocument(
+  language: "javascript" | "html" | "css",
+  code: string,
+) {
+  const trimmed = code.trim();
+
+  if (language === "html") {
+    return `<!DOCTYPE html><html><head><style>body{font-family:system-ui;padding:16px;background:#f8fafc;color:#0f172a;}*{box-sizing:border-box;}h1{color:#0f172a;}button{padding:8px 12px;border:0;border-radius:8px;background:#2563eb;color:white;font-weight:600;}</style></head><body>${trimmed || "<h1>Preview</h1><p>HTML akan muncul di sini.</p>"}</body></html>`;
+  }
+
+  if (language === "css") {
+    return `<!DOCTYPE html><html><head><style>body{font-family:system-ui;padding:24px;background:linear-gradient(135deg,#eef2ff,#f8fafc);color:#111827;} .demo{padding:16px;border-radius:12px;background:white;box-shadow:0 12px 24px rgba(15,23,42,0.08);border:1px solid rgba(148,163,184,0.3);} ${trimmed || ".demo{padding:20px;border-radius:12px;background:#fff;border:1px solid #e2e8f0;}"}</style></head><body><div class="demo">Preview CSS</div></body></html>`;
+  }
+
+  return `<!DOCTYPE html><html><body style="font-family:system-ui;padding:20px;background:#f8fafc;color:#111827;">
+    <div id="app" style="padding:20px;border-radius:12px;background:#fff;box-shadow:0 12px 24px rgba(15,23,42,0.08); border:1px solid #e2e8f0;">
+      <h3 style="margin-top:0;color:#0f172a;">Live JavaScript Preview</h3>
+      <pre id="console" style="margin:0;white-space:pre-wrap;word-break:break-word;color:#0f172a;font-family:monospace;"></pre>
+    </div>
+    <script>
+      const target = document.getElementById('console');
+      const print = (...args) => {
+        const text = args.map((arg) => typeof arg === 'string' ? arg : JSON.stringify(arg)).join(' ');
+        target.textContent += text + '\n';
+      };
+      const consoleProxy = { log: print, warn: print, error: print, info: print };
+      window.console = consoleProxy;
+      try {
+        ${trimmed || "console.log('Kode JavaScript akan tampil di sini.');"}
+      } catch (error) {
+        print('Error:', error.message || String(error));
+      }
+    </script>
+  </body></html>`;
+}
+
 export default function KerjakanClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -44,12 +155,22 @@ export default function KerjakanClient() {
   const [exam, setExam] = useState<ExamState | null>(null);
   const [questions, setQuestions] = useState<PublicQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, string | null>>({});
+  const [codingAnswers, setCodingAnswers] = useState<Record<string, string>>(
+    {},
+  );
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
+  const [questionResults, setQuestionResults] = useState<
+    Record<string, { isCorrect: boolean; message: string; checked: boolean }>
+  >({});
+  const questionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const load = useCallback(async () => {
     if (!attemptId) {
-      setError("Sesi ujian tidak valid. Silakan mulai dari halaman kode ujian.");
+      setError(
+        "Sesi ujian tidak valid. Silakan mulai dari halaman kode ujian.",
+      );
       setLoading(false);
       return;
     }
@@ -70,6 +191,12 @@ export default function KerjakanClient() {
       const initialAnswers: Record<string, string | null> = {};
       for (const q of data.questions as PublicQuestion[]) {
         initialAnswers[q.id] = q.selected_option_id;
+        if (q.question_type === "coding") {
+          setCodingAnswers((prev) => ({
+            ...prev,
+            [q.id]: q.answer_text ?? q.coding_starter_code ?? "",
+          }));
+        }
       }
       setAnswers(initialAnswers);
 
@@ -92,7 +219,9 @@ export default function KerjakanClient() {
     if (!attemptId || submitting) return;
     setSubmitting(true);
     try {
-      await fetch(`/api/public/attempts/${attemptId}/submit`, { method: "POST" });
+      await fetch(`/api/public/attempts/${attemptId}/submit`, {
+        method: "POST",
+      });
       router.replace(`/ujian/hasil?attempt=${attemptId}`);
     } finally {
       setSubmitting(false);
@@ -118,113 +247,482 @@ export default function KerjakanClient() {
     await fetch(`/api/public/attempts/${attemptId}/answer`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question_id: questionId, selected_option_id: optionId }),
+      body: JSON.stringify({
+        question_id: questionId,
+        selected_option_id: optionId,
+      }),
     });
   }
 
+  async function saveCodingAnswer(questionId: string, code: string) {
+    setCodingAnswers((prev) => ({ ...prev, [questionId]: code }));
+    setAnswers((prev) => ({
+      ...prev,
+      [questionId]: code.trim() ? "coding" : null,
+    }));
+    if (!attemptId) return;
+    await fetch(`/api/public/attempts/${attemptId}/answer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question_id: questionId, answer_text: code }),
+    });
+  }
+
+  async function gradeCurrentQuestion(question: PublicQuestion) {
+    if (question.question_type !== "coding") return;
+
+    const code = codingAnswers[question.id] ?? "";
+    if (!code.trim()) {
+      setQuestionResults((prev) => ({
+        ...prev,
+        [question.id]: {
+          isCorrect: false,
+          message: "Jawaban masih kosong. Tulis kode terlebih dahulu.",
+          checked: true,
+        },
+      }));
+      return;
+    }
+
+    const evaluation = await evaluateCodingAnswer(
+      {
+        type: "coding",
+        language: (question.coding_language ?? "javascript") as
+          | "javascript"
+          | "html"
+          | "css",
+        prompt: question.coding_prompt ?? "",
+        starterCode: question.coding_starter_code ?? "",
+        testCases: question.coding_test_cases ?? [],
+        expectedOutputType: "stdout",
+      },
+      code,
+    );
+
+    setQuestionResults((prev) => ({
+      ...prev,
+      [question.id]: {
+        isCorrect: evaluation.isCorrect,
+        message: evaluation.message,
+        checked: true,
+      },
+    }));
+  }
+
+  async function submitSingleQuestion(question: PublicQuestion) {
+    if (question.question_type !== "coding") return;
+
+    const code = codingAnswers[question.id] ?? "";
+    if (!attemptId) return;
+    if (!code.trim()) {
+      setQuestionResults((prev) => ({
+        ...prev,
+        [question.id]: {
+          isCorrect: false,
+          message: "Jawaban belum diisi.",
+          checked: true,
+        },
+      }));
+      return;
+    }
+
+    await fetch(`/api/public/attempts/${attemptId}/answer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question_id: question.id,
+        answer_text: code,
+      }),
+    });
+
+    await gradeCurrentQuestion(question);
+  }
+
   const answeredCount = useMemo(
-    () => Object.values(answers).filter((v) => v !== null && v !== undefined).length,
-    [answers]
+    () =>
+      Object.values(answers).filter((v) => v !== null && v !== undefined)
+        .length,
+    [answers],
   );
+
+  const questionStatus = useMemo(() => {
+    const next: Record<string, "answered" | "unanswered"> = {};
+    for (const q of questions) {
+      if (q.question_type === "coding") {
+        const value = (codingAnswers[q.id] ?? "").trim();
+        next[q.id] = value ? "answered" : "unanswered";
+      } else {
+        const value = answers[q.id];
+        next[q.id] = value ? "answered" : "unanswered";
+      }
+    }
+    return next;
+  }, [answers, codingAnswers, questions]);
+
+  function jumpToQuestion(questionId: string) {
+    const index = questions.findIndex((q) => q.id === questionId);
+    if (index >= 0) {
+      setActiveQuestionIndex(index);
+    }
+    const el = questionRefs.current[questionId];
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-muted">Memuat ujian...</p>
+      <div className='flex flex-1 items-center justify-center'>
+        <p className='text-sm text-muted'>Memuat ujian...</p>
       </div>
     );
   }
 
   if (error || !attempt || !exam) {
     return (
-      <div className="flex flex-1 items-center justify-center px-6">
-        <div className="card max-w-md p-8 text-center">
-          <p className="font-semibold text-danger">{error ?? "Terjadi kesalahan"}</p>
+      <div className='flex flex-1 items-center justify-center px-6'>
+        <div className='card max-w-md p-8 text-center'>
+          <p className='font-semibold text-danger'>
+            {error ?? "Terjadi kesalahan"}
+          </p>
         </div>
       </div>
     );
   }
 
   const isLowTime = (remainingSeconds ?? 0) < 300;
+  const activeQuestion = questions[activeQuestionIndex];
+  const activeCodingTestCase =
+    activeQuestion?.question_type === "coding"
+      ? activeQuestion.coding_test_cases?.[0]
+      : undefined;
+  const renderedHtmlPreview =
+    activeCodingTestCase?.expected_output
+      ?.replace(/\\n/g, "\n")
+      .replace(/\\r\\n/g, "\n") ?? "";
 
   return (
-    <div className="flex flex-1 flex-col">
-      <header className="sticky top-0 z-10 border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-3">
+    <div className='flex flex-1 flex-col'>
+      <header className='sticky top-0 z-10 border-b border-border bg-surface'>
+        <div className='mx-auto flex max-w-[1500px] items-center justify-between px-6 py-3'>
           <div>
-            <p className="font-semibold">{exam.title}</p>
-            <p className="text-xs text-muted">
-              {attempt.student_name} · {answeredCount}/{questions.length} terjawab
+            <p className='font-semibold'>{exam.title}</p>
+            <p className='text-xs text-muted'>
+              {attempt.student_name} · {answeredCount}/{questions.length}{" "}
+              terjawab
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className='flex items-center gap-3'>
             <span
-              className={`font-mono text-lg font-bold ${isLowTime ? "text-danger" : "text-foreground"}`}
-            >
-              {remainingSeconds !== null ? formatTime(remainingSeconds) : "--:--"}
+              className={`font-mono text-lg font-bold ${isLowTime ? "text-danger" : "text-foreground"}`}>
+              {remainingSeconds !== null
+                ? formatTime(remainingSeconds)
+                : "--:--"}
             </span>
             <button
               onClick={() => {
-                if (confirm("Kumpulkan jawaban sekarang? Anda tidak bisa mengubah jawaban lagi.")) {
+                if (
+                  confirm(
+                    "Kumpulkan jawaban sekarang? Anda tidak bisa mengubah jawaban lagi.",
+                  )
+                ) {
                   submit();
                 }
               }}
               disabled={submitting}
-              className="btn btn-primary text-sm"
-            >
+              className='btn btn-primary text-sm'>
               {submitting ? "Mengumpulkan..." : "Kumpulkan"}
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-6">
-        <div className="flex flex-col gap-4">
-          {questions.map((q, index) => (
-            <div key={q.id} className="card p-5">
-              <p className="font-medium">
-                {index + 1}. {q.text}
-              </p>
-              <div className="mt-3 flex flex-col gap-2">
-                {q.options.map((opt) => {
-                  const selected = answers[q.id] === opt.id;
+      <main className='mx-auto w-full max-w-[1500px] flex-1 px-3 py-3'>
+        <div className='grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px]'>
+          <div className='min-w-0'>
+            {questions[activeQuestionIndex] && (
+              <div
+                id={questions[activeQuestionIndex].id}
+                ref={(node) => {
+                  questionRefs.current[questions[activeQuestionIndex].id] =
+                    node;
+                }}
+                className={`card p-3 transition ${
+                  questionStatus[questions[activeQuestionIndex].id] ===
+                  "answered"
+                    ? "border-green-200 bg-green-50/30"
+                    : "border-border"
+                }`}>
+                {questions[activeQuestionIndex].question_type === "coding" ? (
+                  <div className='mb-4 flex min-w-0 items-start justify-between gap-3'>
+                    <div className='min-w-0'>
+                      <p className='text-[10px] uppercase tracking-[0.2em] text-violet-600'>
+                        Instruksi coding
+                      </p>
+                      <p className='mt-1 font-medium text-slate-900'>
+                        {questions[activeQuestionIndex].coding_prompt ??
+                          questions[activeQuestionIndex].text}
+                      </p>
+                    </div>
+                    <span className='rounded-full border border-border bg-white px-2 py-1 text-[10px] uppercase tracking-wide text-muted'>
+                      {questionStatus[questions[activeQuestionIndex].id] ===
+                      "answered"
+                        ? "terjawab"
+                        : "belum dijawab"}
+                    </span>
+                  </div>
+                ) : (
+                  <div className='mb-4 flex items-center justify-between gap-3'>
+                    <p className='font-medium'>
+                      {activeQuestionIndex + 1}.{" "}
+                      {questions[activeQuestionIndex].text}
+                    </p>
+                    <span className='rounded-full border border-border bg-white px-2 py-1 text-[10px] uppercase tracking-wide text-muted'>
+                      {questionStatus[questions[activeQuestionIndex].id] ===
+                      "answered"
+                        ? "terjawab"
+                        : "belum dijawab"}
+                    </span>
+                  </div>
+                )}
+
+                {questions[activeQuestionIndex].question_type === "coding" &&
+                  questionResults[questions[activeQuestionIndex].id] && (
+                    <div
+                      className={`mb-3 rounded-lg border px-3 py-2 text-sm ${
+                        questionResults[questions[activeQuestionIndex].id]
+                          .isCorrect
+                          ? "border-green-200 bg-green-50 text-green-700"
+                          : "border-red-200 bg-red-50 text-red-700"
+                      }`}>
+                      <strong>
+                        {questionResults[questions[activeQuestionIndex].id]
+                          .isCorrect
+                          ? "Jawaban benar."
+                          : "Jawaban salah."}
+                      </strong>
+                      <div className='mt-1 text-xs'>
+                        {
+                          questionResults[questions[activeQuestionIndex].id]
+                            .message
+                        }
+                      </div>
+                    </div>
+                  )}
+
+                {questions[activeQuestionIndex].question_type === "coding" ? (
+                  <div className='mt-3 grid w-full gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1.35fr)]'>
+                    <div className='flex flex-col gap-2'>
+                      <div className='flex h-[16rem] flex-col overflow-hidden rounded-2xl border border-cyan-400/20 bg-[#0b1120] shadow-[0_0_0_1px_rgba(34,211,238,0.08),0_20px_50px_rgba(15,23,42,0.45)]'>
+                        <div className='flex items-center justify-between border-b border-cyan-400/20 bg-slate-900/80 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-200'>
+                          <span>Code</span>
+                          <span className='rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-200'>
+                            {questions[activeQuestionIndex].coding_language ??
+                              "javascript"}
+                          </span>
+                        </div>
+                        <textarea
+                          value={
+                            codingAnswers[questions[activeQuestionIndex].id] ??
+                            ""
+                          }
+                          onChange={(e) =>
+                            saveCodingAnswer(
+                              questions[activeQuestionIndex].id,
+                              e.target.value,
+                            )
+                          }
+                          className='h-full w-full resize-y border-0 bg-transparent px-4 py-3 font-mono text-[13px] leading-6 text-slate-100 placeholder:text-slate-500 focus:outline-none selection:bg-cyan-500/30'
+                          style={{
+                            fontFamily:
+                              '"SFMono-Regular", "Consolas", "Liberation Mono", monospace',
+                            backgroundImage:
+                              "linear-gradient(to bottom, rgba(15,23,42,0.2), rgba(15,23,42,0.2)), linear-gradient(to right, rgba(148,163,184,0.2) 0, rgba(148,163,184,0.2) 1px, transparent 1px)",
+                            backgroundSize: "100% 24px, 32px 100%",
+                            backgroundPosition: "left top, left top",
+                          }}
+                          placeholder={
+                            questions[activeQuestionIndex]
+                              .coding_starter_code ??
+                            "Tulis jawaban coding Anda di sini..."
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className='grid h-[16rem] grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2'>
+                      <div className='flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-red-200 bg-linear-to-br from-red-50 via-white to-rose-50 shadow-sm'>
+                        <div className='flex items-center justify-between border-b border-red-100 bg-red-500/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-red-700'>
+                          <span>Live Preview</span>
+                          <span className='rounded-full bg-red-600 px-2 py-0.5 text-[10px] text-white'>
+                            AUTO
+                          </span>
+                        </div>
+                        <iframe
+                          title='Live preview'
+                          srcDoc={buildLivePreviewDocument(
+                            (questions[activeQuestionIndex].coding_language ??
+                              "javascript") as "javascript" | "html" | "css",
+                            codingAnswers[questions[activeQuestionIndex].id] ??
+                              "",
+                          )}
+                          className='h-full w-full border-0 bg-white'
+                          sandbox='allow-scripts allow-modals'
+                        />
+                      </div>
+
+                      <div className='flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-emerald-200 bg-linear-to-br from-emerald-50 via-white to-cyan-50 shadow-sm'>
+                        <div className='flex items-center justify-between border-b border-emerald-100 bg-emerald-500/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700'>
+                          <span>Preview validasi</span>
+                          <span className='rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] text-white'>
+                            TEST
+                          </span>
+                        </div>
+                        {activeCodingTestCase ? (
+                          (questions[activeQuestionIndex].coding_language ??
+                            "javascript") === "html" ? (
+                            <iframe
+                              title='Preview validasi HTML'
+                              srcDoc={`<!DOCTYPE html><html><head><style>html,body{margin:0;padding:0;background:#fff;color:#0f172a;font-family:system-ui;}*{box-sizing:border-box;}body{padding:12px;}</style></head><body>${activeCodingTestCase.expected_output || "<p></p>"}</body></html>`}
+                              className='h-full w-full border-0 bg-white'
+                              sandbox='allow-scripts allow-modals'
+                            />
+                          ) : (
+                            <div className='h-full min-h-0 overflow-auto p-1.5 font-mono text-[11px] leading-5 text-emerald-700'>
+                              {activeCodingTestCase.expected_output || "-"}
+                            </div>
+                          )
+                        ) : (
+                          <div className='flex h-full items-center justify-center p-3 text-[10px] text-slate-500'>
+                            Belum ada validasi yang tersedia.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className='mt-3 flex flex-col gap-2'>
+                    {questions[activeQuestionIndex].options.map((opt) => {
+                      const selected =
+                        answers[questions[activeQuestionIndex].id] === opt.id;
+                      return (
+                        <label
+                          key={opt.id}
+                          className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition ${
+                            selected
+                              ? "border-primary bg-blue-50"
+                              : "border-border hover:bg-gray-50"
+                          }`}>
+                          <input
+                            type='radio'
+                            name={questions[activeQuestionIndex].id}
+                            checked={selected}
+                            onChange={() =>
+                              selectAnswer(
+                                questions[activeQuestionIndex].id,
+                                opt.id,
+                              )
+                            }
+                            className='h-4 w-4'
+                          />
+                          <span>
+                            <span className='font-semibold'>{opt.id}.</span>{" "}
+                            {opt.text}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {questions[activeQuestionIndex].question_type === "coding" && (
+                  <div className='mt-6 flex flex-wrap items-center gap-3'>
+                    <button
+                      type='button'
+                      onClick={() =>
+                        gradeCurrentQuestion(questions[activeQuestionIndex])
+                      }
+                      className='btn btn-secondary text-sm'>
+                      Cek Jawaban
+                    </button>
+                  </div>
+                )}
+
+                <div className='mt-6 flex items-center justify-between gap-3'>
+                  <button
+                    type='button'
+                    onClick={() =>
+                      setActiveQuestionIndex((prev) => Math.max(0, prev - 1))
+                    }
+                    disabled={activeQuestionIndex === 0}
+                    className='btn btn-secondary text-sm disabled:opacity-40'>
+                    Sebelumnya
+                  </button>
+                  <button
+                    type='button'
+                    onClick={() =>
+                      setActiveQuestionIndex((prev) =>
+                        Math.min(questions.length - 1, prev + 1),
+                      )
+                    }
+                    disabled={activeQuestionIndex === questions.length - 1}
+                    className='btn btn-secondary text-sm disabled:opacity-40'>
+                    Selanjutnya
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <aside className='xl:sticky xl:top-24 xl:self-start'>
+            <div className='rounded-xl border border-border bg-surface p-3 shadow-sm'>
+              <div className='mb-2 flex items-center justify-between'>
+                <p className='text-sm font-semibold'>Status soal</p>
+                <p className='text-xs text-muted'>
+                  {answeredCount}/{questions.length} terjawab
+                </p>
+              </div>
+              <div className='flex flex-wrap gap-2 xl:flex-col'>
+                {questions.map((q, index) => {
+                  const status = questionStatus[q.id] ?? "unanswered";
+                  const isActive = index === activeQuestionIndex;
                   return (
-                    <label
-                      key={opt.id}
-                      className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition ${
-                        selected
-                          ? "border-primary bg-blue-50"
-                          : "border-border hover:bg-gray-50"
+                    <button
+                      key={q.id}
+                      type='button'
+                      onClick={() => jumpToQuestion(q.id)}
+                      className={`flex h-9 w-9 items-center justify-center rounded-full border text-xs font-semibold transition ${
+                        isActive
+                          ? "border-primary bg-primary/10 text-primary"
+                          : status === "answered"
+                            ? "border-green-500 bg-green-50 text-green-700"
+                            : "border-border bg-white text-muted"
                       }`}
-                    >
-                      <input
-                        type="radio"
-                        name={q.id}
-                        checked={selected}
-                        onChange={() => selectAnswer(q.id, opt.id)}
-                        className="h-4 w-4"
-                      />
-                      <span>
-                        <span className="font-semibold">{opt.id}.</span> {opt.text}
-                      </span>
-                    </label>
+                      title={
+                        status === "answered"
+                          ? `Soal ${index + 1} sudah dijawab`
+                          : `Soal ${index + 1} belum dijawab`
+                      }>
+                      {index + 1}
+                    </button>
                   );
                 })}
               </div>
             </div>
-          ))}
+          </aside>
         </div>
 
-        <div className="mt-6 flex justify-center">
+        <div className='mt-6 flex justify-center'>
           <button
             onClick={() => {
-              if (confirm("Kumpulkan jawaban sekarang? Anda tidak bisa mengubah jawaban lagi.")) {
+              if (
+                confirm(
+                  "Kumpulkan jawaban sekarang? Anda tidak bisa mengubah jawaban lagi.",
+                )
+              ) {
                 submit();
               }
             }}
             disabled={submitting}
-            className="btn btn-primary"
-          >
+            className='btn btn-primary'>
             {submitting ? "Mengumpulkan..." : "Kumpulkan Ujian"}
           </button>
         </div>

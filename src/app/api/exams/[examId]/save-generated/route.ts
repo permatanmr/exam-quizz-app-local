@@ -18,26 +18,59 @@ export async function POST(request: Request, { params }: Params) {
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Data tidak valid" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   const maxOrder = db
-    .prepare("SELECT COALESCE(MAX(order_index), -1) as m FROM question WHERE exam_id = ?")
+    .prepare(
+      "SELECT COALESCE(MAX(order_index), -1) as m FROM question WHERE exam_id = ?",
+    )
     .get(examId) as { m: number };
 
-  const insert = db.prepare(
-    `INSERT INTO question (id, exam_id, text, options, correct_option_id, explanation,
+  const insertMultipleChoice = db.prepare(
+    `INSERT INTO question (id, exam_id, question_type, text, options, correct_option_id, explanation,
       order_index, points, source, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'ai', ?)`
+     VALUES (?, ?, 'multiple_choice', ?, ?, ?, ?, ?, 1, 'ai', ?)`,
+  );
+
+  const insertCoding = db.prepare(
+    `INSERT INTO question (id, exam_id, question_type, text, options, correct_option_id, explanation,
+      order_index, points, source, coding_language, coding_prompt, coding_starter_code,
+      coding_test_cases, coding_expected_output_type, created_at)
+     VALUES (?, ?, 'coding', ?, ?, '', ?, ?, 1, 'ai', ?, ?, ?, ?, ?, ?)`,
   );
 
   const tx = db.transaction((questions: typeof parsed.data.questions) => {
     let order = maxOrder.m + 1;
     for (const q of questions) {
+      if (q.type === "coding") {
+        insertCoding.run(
+          newId(),
+          examId,
+          q.text,
+          JSON.stringify([]),
+          q.explanation ?? "",
+          order,
+          q.language,
+          q.prompt,
+          q.starter_code ?? "",
+          JSON.stringify(
+            q.test_cases.map((tc) => ({
+              input: tc.input,
+              expected_output: tc.expected_output ?? tc.expectedOutput ?? "",
+            })),
+          ),
+          q.expected_output_type ?? "stdout",
+          nowIso(),
+        );
+        order += 1;
+        continue;
+      }
+
       const optionIds = q.options.map((o) => o.id);
       if (!optionIds.includes(q.correct_option_id)) continue;
-      insert.run(
+      insertMultipleChoice.run(
         newId(),
         examId,
         q.text,
@@ -45,7 +78,7 @@ export async function POST(request: Request, { params }: Params) {
         q.correct_option_id,
         q.explanation ?? "",
         order,
-        nowIso()
+        nowIso(),
       );
       order += 1;
     }

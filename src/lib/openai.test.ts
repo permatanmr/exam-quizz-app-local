@@ -41,3 +41,18 @@ test("validateGeneratedQuestionCount rejects mismatched counts", () => {
     /tepat 2 soal/i,
   );
 });
+
+test("buildQuestionSchema supports coding question generation for html/css/javascript", () => {
+  const schema = buildQuestionSchema({
+    count: 2,
+    numOptions: 4,
+    questionType: "coding",
+    codingLanguage: "javascript",
+  });
+
+  const itemSchema = (schema.schema.properties.questions as any).items;
+
+  assert.equal(schema.name, "generated_coding_questions");
+  assert.equal(itemSchema.properties.type.enum[0], "coding");
+  assert.equal(itemSchema.properties.language.enum[0], "javascript");
+});

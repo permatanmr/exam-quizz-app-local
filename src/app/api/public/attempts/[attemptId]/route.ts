@@ -48,14 +48,18 @@ export async function GET(_request: Request, { params }: Params) {
 
   const answerRows = db
     .prepare(
-      "SELECT question_id, selected_option_id FROM attempt_answer WHERE attempt_id = ?",
+      "SELECT question_id, selected_option_id, answer_text FROM attempt_answer WHERE attempt_id = ?",
     )
     .all(attemptId) as {
     question_id: string;
     selected_option_id: string | null;
+    answer_text: string | null;
   }[];
   const answerMap = new Map(
-    answerRows.map((a) => [a.question_id, a.selected_option_id]),
+    answerRows.map((a) => [
+      a.question_id,
+      { selected_option_id: a.selected_option_id, answer_text: a.answer_text },
+    ]),
   );
 
   const questions = orderedIds
@@ -67,10 +71,15 @@ export async function GET(_request: Request, { params }: Params) {
         exam.shuffle_options === 1
           ? seededShuffle(publicQ.options, attemptId + ":" + q.id)
           : publicQ.options;
+      const savedAnswer = answerMap.get(q.id);
       return {
         ...publicQ,
         options,
-        selected_option_id: answerMap.get(q.id) ?? null,
+        selected_option_id: savedAnswer?.selected_option_id ?? null,
+        answer_text:
+          q.question_type === "coding"
+            ? (savedAnswer?.answer_text ?? null)
+            : null,
       };
     });
 
