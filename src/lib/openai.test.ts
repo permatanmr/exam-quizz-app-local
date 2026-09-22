@@ -43,16 +43,20 @@ test("validateGeneratedQuestionCount rejects mismatched counts", () => {
 });
 
 test("buildQuestionSchema supports coding question generation for html/css/javascript", () => {
-  const schema = buildQuestionSchema({
-    count: 2,
-    numOptions: 4,
-    questionType: "coding",
-    codingLanguage: "javascript",
+  ["javascript", "html", "css"].forEach((language) => {
+    const schema = buildQuestionSchema({
+      count: 2,
+      numOptions: 4,
+      questionType: "coding",
+      codingLanguage: language as "javascript" | "html" | "css",
+    });
+
+    const itemSchema = (schema.schema.properties.questions as any).items;
+
+    assert.equal(schema.name, "generated_coding_questions");
+    assert.equal(itemSchema.properties.type.enum[0], "coding");
+    assert.equal(itemSchema.properties.language.enum[0], language);
+    assert.ok(itemSchema.properties.solution_code);
+    assert.ok(itemSchema.required.includes("solution_code"));
   });
-
-  const itemSchema = (schema.schema.properties.questions as any).items;
-
-  assert.equal(schema.name, "generated_coding_questions");
-  assert.equal(itemSchema.properties.type.enum[0], "coding");
-  assert.equal(itemSchema.properties.language.enum[0], "javascript");
 });

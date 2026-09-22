@@ -9,6 +9,7 @@ export type GeneratedQuestion = {
   language?: "javascript" | "html" | "css";
   prompt?: string;
   starter_code?: string;
+  solution_code?: string;
   test_cases?: Array<{ input: string; expected_output: string }>;
   expected_output_type?: "stdout" | "html" | "css";
 };
@@ -85,21 +86,30 @@ export function buildQuestionSchema(
     },
     starter_code: {
       type: "string",
-      description: "Starter code opsional yang diberikan sebelum jawaban siswa",
+      description:
+        "Bagian kode awal yang sudah ada di soal, berupa potongan program yang sebagian bagian inti dibuang. Untuk semua jenis coding, starter_code tidak boleh berisi solusi lengkap; semua bagian inti yang harus diisi siswa harus dihapus dan, untuk JavaScript, diganti dengan placeholder seperti __USER_CODE__ di dalam test_cases[].input.",
+    },
+    solution_code: {
+      type: "string",
+      description:
+        "Kode solusi lengkap yang benar untuk soal coding ini. Ini wajib berisi jawaban final yang lengkap dan siap dijalankan, serta harus sesuai dengan test_cases yang dibuat untuk bahasa coding yang dipilih (JavaScript, HTML, atau CSS).",
     },
     test_cases: {
       type: "array",
-      description: "Array test case untuk mengecek output jawaban",
+      description:
+        "Array test case yang harus siap di-compile dan di-assert. Untuk JavaScript, setiap item input harus berupa program lengkap yang bisa dijalankan, bukan potongan acak. Jika beberapa bagian harus diisi siswa, letakkan placeholder __USER_CODE__ pada posisi yang seharusnya diisi oleh jawaban siswa. Hasil yang diharapkan harus sama persis dengan output konsol setelah program dijalankan. Jangan menambah teks tambahan selain output aktual.",
       items: {
         type: "object",
         properties: {
           input: {
             type: "string",
-            description: "Kode yang dijalankan untuk mengecek output",
+            description:
+              "Program JavaScript lengkap yang akan dijalankan untuk mengecek output. Untuk soal JavaScript, input ini harus bisa compile dengan kode starter dan jawaban siswa. Gunakan placeholder __USER_CODE__ bila siswa harus mengisi blok inti yang hilang.",
           },
           expected_output: {
             type: "string",
-            description: "Output yang diharapkan",
+            description:
+              "Output yang diharapkan persis dari hasil compilasi program, misalnya '5' atau 'Hello World'.",
           },
         },
         required: ["input", "expected_output"],
@@ -156,6 +166,7 @@ export function buildQuestionSchema(
           "language",
           "prompt",
           "starter_code",
+          "solution_code",
           "test_cases",
           "expected_output_type",
           "explanation",
@@ -231,7 +242,7 @@ export async function generateQuestions(
       ? `Buatkan tepat ${input.count} soal ujian coding berbahasa ${languageText} tentang topik: "${input.topic}".`
       : `Buatkan tepat ${input.count} soal ujian pilihan ganda berbahasa ${languageText} tentang topik: "${input.topic}".`,
     questionType === "coding"
-      ? `Setiap soal harus menggunakan bahasa ${codingLanguage}. Tulis instruksi soal yang jelas, starter code yang relevan jika perlu, dan minimal 1 test case yang valid.`
+      ? `Setiap soal harus menggunakan bahasa ${codingLanguage}. Tulis instruksi soal yang jelas, starter code yang relevan, dan minimal 1 test case yang valid.`
       : `Setiap soal memiliki tepat ${input.numOptions} pilihan jawaban (${letters.join(", ")}) dengan hanya satu jawaban yang benar.`,
     `Gunakan ${difficultyText}.`,
     `Pastikan output berisi tepat ${input.count} soal dan tidak lebih atau kurang dari itu.`,
@@ -239,12 +250,21 @@ export async function generateQuestions(
       ? `Gunakan materi/konteks referensi berikut sebagai acuan utama pembuatan soal:\n"""\n${input.context}\n"""`
       : "",
     questionType === "coding"
-      ? "Format soal coding harus berisi field type, text, language, prompt, starter_code (opsional), test_cases, expected_output_type, dan explanation."
+      ? "Format soal coding harus berisi field type, text, language, prompt, starter_code (opsional), solution_code, test_cases, expected_output_type, dan explanation."
       : "Format soal pilihan ganda harus berisi field text, options, correct_option_id, dan explanation.",
     "Buat soal yang jelas, tidak ambigu, relevan secara akademis, dan hindari pengulangan antar soal.",
     questionType === "coding"
-      ? "Gunakan expected_output_type sesuai jenis soal: stdout untuk console output, html untuk markup/html, css untuk deklarasi CSS."
+      ? "Wajib sertakan field solution_code yang berisi jawaban lengkap yang benar untuk soal ini. solution_code harus dapat dijalankan dan konsisten dengan expected_output dan test_cases."
+      : "",
+    questionType === "coding"
+      ? "Untuk JavaScript, setiap test_cases[i].input HARUS berupa program lengkap yang siap dijalankan dan di-assert. Artinya, input tersebut harus berisi seluruh konteks program sehingga bisa compile dan menghasilkan output. Jika soal menuntut siswa menulis bagian inti logika, maka bagian yang hilang harus ditandai dengan placeholder __USER_CODE__ di dalam input, dan starter_code berperan sebagai bagian program yang sudah tersedia di awal atau di sekitar bagian yang dihilangkan. Hasil expected_output harus sama persis dengan output console program yang sudah selesai. Jawaban siswa benar hanya jika output program yang dikompilasi sama persis dengan expected_output."
       : "Sertakan penjelasan singkat (explanation) untuk setiap jawaban benar.",
+    questionType === "coding"
+      ? "Untuk JavaScript, starter_code bukanlah solusi lengkap. starter_code harus berupa potongan program yang sudah ada, tetapi inti solusinya dihilangkan sebagian. Test case input harus menunjukkan bagaimana potongan itu dipasang kembali menjadi program yang lengkap, dengan placeholder __USER_CODE__ pada bagian yang siswa harus isi. Jangan buat test case yang hanya berisi ekspresi acak; buat program yang benar-benar dapat di-compile dan dibandingkan outputnya."
+      : "",
+    questionType === "coding"
+      ? "Gunakan expected_output_type sesuai jenis soal: stdout untuk console output, html untuk markup/html, css untuk deklarasi CSS."
+      : "",
   ]
     .filter(Boolean)
     .join("\n");

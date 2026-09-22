@@ -46,7 +46,7 @@ export async function PATCH(request: Request, { params }: Params) {
     db.prepare(
       `UPDATE question SET question_type = ?, text = ?, options = ?, correct_option_id = ?, explanation = ?,
        points = ?, coding_language = ?, coding_prompt = ?, coding_starter_code = ?,
-       coding_test_cases = ?, coding_expected_output_type = ? WHERE id = ?`,
+       coding_solution_code = ?, coding_test_cases = ?, coding_expected_output_type = ? WHERE id = ?`,
     ).run(
       "coding",
       text,
@@ -57,6 +57,7 @@ export async function PATCH(request: Request, { params }: Params) {
       codeData.language ?? existing.coding_language ?? "javascript",
       codeData.prompt ?? existing.coding_prompt ?? "",
       codeData.starter_code ?? existing.coding_starter_code ?? "",
+      codeData.solution_code ?? existing.coding_solution_code ?? "",
       JSON.stringify(
         codeData.test_cases ?? JSON.parse(existing.coding_test_cases || "[]"),
       ),

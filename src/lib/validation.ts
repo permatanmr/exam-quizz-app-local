@@ -78,6 +78,12 @@ const codingQuestionSchema = baseQuestionSchema.extend({
   language: z.enum(["javascript", "html", "css"]),
   prompt: z.string().trim().min(3, "Instruksi coding minimal 3 karakter"),
   starter_code: z.string().optional().default(""),
+  solution_code: z
+    .string()
+    .trim()
+    .min(1, "Solusi lengkap wajib diisi")
+    .optional()
+    .default(""),
   test_cases: z.array(codingTestCaseSchema).min(1, "Minimal 1 test case"),
   expected_output_type: z
     .enum(["stdout", "html", "css"])
@@ -115,6 +121,11 @@ export const questionUpdateSchema = z.union([
       .min(3, "Instruksi coding minimal 3 karakter")
       .optional(),
     starter_code: z.string().optional(),
+    solution_code: z
+      .string()
+      .trim()
+      .min(1, "Solusi lengkap wajib diisi")
+      .optional(),
     test_cases: z
       .array(codingTestCaseSchema)
       .min(1, "Minimal 1 test case")
@@ -162,6 +173,12 @@ export const saveGeneratedQuestionsSchema = z.object({
           language: z.enum(["javascript", "html", "css"]),
           prompt: z.string().trim().min(3),
           starter_code: z.string().optional().default(""),
+          solution_code: z
+            .string()
+            .trim()
+            .min(1, "Solusi lengkap wajib diisi")
+            .optional()
+            .default(""),
           test_cases: z
             .array(
               z.object({

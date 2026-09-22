@@ -36,9 +36,9 @@ export async function POST(request: Request, { params }: Params) {
 
   const insertCoding = db.prepare(
     `INSERT INTO question (id, exam_id, question_type, text, options, correct_option_id, explanation,
-      order_index, points, source, coding_language, coding_prompt, coding_starter_code,
+      order_index, points, source, coding_language, coding_prompt, coding_starter_code, coding_solution_code,
       coding_test_cases, coding_expected_output_type, created_at)
-     VALUES (?, ?, 'coding', ?, ?, '', ?, ?, 1, 'ai', ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, 'coding', ?, ?, '', ?, ?, 1, 'ai', ?, ?, ?, ?, ?, ?, ? )`,
   );
 
   const tx = db.transaction((questions: typeof parsed.data.questions) => {
@@ -55,6 +55,7 @@ export async function POST(request: Request, { params }: Params) {
           q.language,
           q.prompt,
           q.starter_code ?? "",
+          q.solution_code ?? "",
           JSON.stringify(
             q.test_cases.map((tc) => ({
               input: tc.input,

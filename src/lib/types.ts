@@ -25,6 +25,7 @@ export type QuestionRow = {
   coding_language: string | null;
   coding_prompt: string | null;
   coding_starter_code: string | null;
+  coding_solution_code: string | null;
   coding_test_cases: string | null;
   coding_expected_output_type: string | null;
   created_at: string;

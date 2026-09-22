@@ -55,8 +55,8 @@ export async function POST(request: Request, { params }: Params) {
       `INSERT INTO question (
         id, exam_id, question_type, text, options, correct_option_id, explanation,
         order_index, points, source, coding_language, coding_prompt, coding_starter_code,
-        coding_test_cases, coding_expected_output_type, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?, ?, ?, ?, ?)`,
+        coding_solution_code, coding_test_cases, coding_expected_output_type, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       examId,
@@ -70,6 +70,7 @@ export async function POST(request: Request, { params }: Params) {
       data.language,
       data.prompt,
       data.starter_code,
+      data.solution_code ?? "",
       JSON.stringify(data.test_cases),
       data.expected_output_type,
       nowIso(),

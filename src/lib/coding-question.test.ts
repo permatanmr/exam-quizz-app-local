@@ -65,6 +65,33 @@ test("evaluateCodingAnswer ignores insignificant whitespace and newline differen
   assert.equal(result.message.includes("benar"), true);
 });
 
+test("evaluateCodingAnswer accepts partial starter code with __USER_CODE__ placeholder", async () => {
+  const spec: CodingQuestionSpec = {
+    type: "coding",
+    language: "javascript",
+    prompt: "Buat fungsi tambah dua angka berdasarkan template yang diberikan.",
+    starterCode: "function tambah(a, b) {\n  __USER_CODE__\n}\n",
+    testCases: [
+      {
+        input:
+          "function tambah(a, b) {\n  __USER_CODE__\n}\nconsole.log(tambah(3, 4));",
+        expected_output: "7",
+      },
+      {
+        input:
+          "function tambah(a, b) {\n  __USER_CODE__\n}\nconsole.log(tambah(10, 5));",
+        expected_output: "15",
+      },
+    ],
+    expectedOutputType: "stdout",
+  };
+
+  const result = await evaluateCodingAnswer(spec, "return a + b;");
+
+  assert.equal(result.isCorrect, true);
+  assert.equal(result.message.includes("benar"), true);
+});
+
 test("evaluateCodingAnswer rejects wrong output", async () => {
   const spec: CodingQuestionSpec = {
     type: "coding",

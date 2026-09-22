@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { evaluateCodingAnswer } from "@/lib/coding-question";
+import {
+  compileAndRunJavaScript,
+  evaluateCodingAnswer,
+} from "@/lib/coding-question";
 
 type PublicQuestion = {
   id: string;
@@ -108,6 +111,22 @@ function highlightCodeSnippet(
   return highlighted.replace(/\n/g, "<br>");
 }
 
+function buildCssPreviewDocument(css: string, label: string) {
+  const source =
+    css.trim() ||
+    ".demo{padding:20px;border-radius:12px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 12px 24px rgba(15,23,42,0.08);} body{padding:24px;background:linear-gradient(135deg,#eef2ff,#f8fafc);} h2{margin:0 0 12px;color:#111827;} p{margin:0 0 12px;color:#334155;} button{padding:10px 15px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:600;}";
+
+  return `<!DOCTYPE html><html><head><style>
+    html,body{margin:0;padding:0;font-family:system-ui;background:#f8fafc;color:#111827;}
+    body{padding:24px;}
+    .demo{padding:20px;border-radius:16px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 12px 24px rgba(15,23,42,0.08);max-width:480px;}
+    h2{margin:0 0 12px;color:#111827;}
+    p{margin:0 0 12px;color:#334155;}
+    button{padding:10px 15px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:600;}
+    ${source}
+  </style></head><body><div class="demo"><h2>${label}</h2><p>Contoh elemen yang distyling oleh CSS.</p><button>Button Demo</button></div></body></html>`;
+}
+
 function buildLivePreviewDocument(
   language: "javascript" | "html" | "css",
   code: string,
@@ -119,26 +138,51 @@ function buildLivePreviewDocument(
   }
 
   if (language === "css") {
-    return `<!DOCTYPE html><html><head><style>body{font-family:system-ui;padding:24px;background:linear-gradient(135deg,#eef2ff,#f8fafc);color:#111827;} .demo{padding:16px;border-radius:12px;background:white;box-shadow:0 12px 24px rgba(15,23,42,0.08);border:1px solid rgba(148,163,184,0.3);} ${trimmed || ".demo{padding:20px;border-radius:12px;background:#fff;border:1px solid #e2e8f0;}"}</style></head><body><div class="demo">Preview CSS</div></body></html>`;
+    return buildCssPreviewDocument(trimmed, "Preview CSS");
   }
+
+  const safeScript = (
+    trimmed || "console.log('Kode JavaScript akan tampil di sini.');"
+  ).replace(/<\/script>/gi, "<\\/script>");
 
   return `<!DOCTYPE html><html><body style="font-family:system-ui;padding:20px;background:#f8fafc;color:#111827;">
     <div id="app" style="padding:20px;border-radius:12px;background:#fff;box-shadow:0 12px 24px rgba(15,23,42,0.08); border:1px solid #e2e8f0;">
-      <h3 style="margin-top:0;color:#0f172a;">Live JavaScript Preview</h3>
-      <pre id="console" style="margin:0;white-space:pre-wrap;word-break:break-word;color:#0f172a;font-family:monospace;"></pre>
+      <div id="output" style="white-space:pre-wrap;word-break:break-word;color:#0f172a;font-family:monospace;min-height:120px;"></div>
     </div>
     <script>
-      const target = document.getElementById('console');
-      const print = (...args) => {
-        const text = args.map((arg) => typeof arg === 'string' ? arg : JSON.stringify(arg)).join(' ');
-        target.textContent += text + '\n';
+      const output = document.getElementById('output');
+      const app = document.getElementById('app');
+      const renderValue = (value) => {
+        if (typeof value === 'string') {
+          if (/<[a-z][\s\S]*>/i.test(value)) {
+            app.innerHTML = value;
+            output.textContent = '';
+            return;
+          }
+          output.textContent = value;
+          return;
+        }
+        if (value && typeof value === 'object') {
+          output.textContent = JSON.stringify(value, null, 2);
+          return;
+        }
+        output.textContent = typeof value === 'undefined' ? '' : String(value);
       };
-      const consoleProxy = { log: print, warn: print, error: print, info: print };
+      const consoleProxy = {
+        log: (...args) => { const text = args.map((arg) => typeof arg === 'string' ? arg : JSON.stringify(arg)).join(' '); output.textContent += text + '\n'; },
+        warn: (...args) => { const text = args.map((arg) => typeof arg === 'string' ? arg : JSON.stringify(arg)).join(' '); output.textContent += text + '\n'; },
+        error: (...args) => { const text = 'Error: ' + args.map((arg) => typeof arg === 'string' ? arg : JSON.stringify(arg)).join(' '); output.textContent += text + '\n'; },
+        info: (...args) => { const text = args.map((arg) => typeof arg === 'string' ? arg : JSON.stringify(arg)).join(' '); output.textContent += text + '\n'; },
+      };
       window.console = consoleProxy;
       try {
-        ${trimmed || "console.log('Kode JavaScript akan tampil di sini.');"}
+        const runner = new Function('console', 'window', 'document', 'app', 'renderValue', ${JSON.stringify(safeScript)});
+        const result = runner(consoleProxy, window, document, app, renderValue);
+        if (typeof result !== 'undefined') {
+          renderValue(result);
+        }
       } catch (error) {
-        print('Error:', error.message || String(error));
+        output.textContent = 'Error: ' + (error && error.message ? error.message : String(error));
       }
     </script>
   </body></html>`;
@@ -154,7 +198,86 @@ function buildAnswerPreviewDocument(
     return `<!DOCTYPE html><html><head><style>html,body{margin:0;padding:0;background:#fff;color:#0f172a;font-family:system-ui;}*{box-sizing:border-box;}body{padding:12px;}</style></head><body>${safe || "<p></p>"}</body></html>`;
   }
 
+  if (language === "css") {
+    return buildCssPreviewDocument(
+      safe ||
+        ".demo{padding:20px;border-radius:12px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 12px 24px rgba(15,23,42,0.08);}",
+      "Answer Preview",
+    );
+  }
+
   return `<!DOCTYPE html><html><body style="font-family:monospace;white-space:pre-wrap;padding:16px;background:#f8fafc;color:#065f46;">${escapeHtml(safe || "-")}</body></html>`;
+}
+
+function buildJavaScriptExecutionCode(
+  starterCode: string,
+  answerCode: string,
+  testCaseInput: string,
+) {
+  const placeholderPatterns = [
+    /__USER_CODE__/g,
+    /__ANSWER_CODE__/g,
+    /\{\{\s*USER_CODE\s*\}\}/g,
+    /<<USER_CODE>>/g,
+    /\[\[USER_CODE\]\]/g,
+  ];
+
+  const normalizedTestCaseInput = (testCaseInput ?? "").trim();
+  const hasPlaceholder = placeholderPatterns.some((pattern) =>
+    pattern.test(normalizedTestCaseInput),
+  );
+
+  if (hasPlaceholder) {
+    let interpolated = normalizedTestCaseInput;
+    for (const pattern of placeholderPatterns) {
+      interpolated = interpolated.replace(pattern, answerCode);
+    }
+    return [starterCode, interpolated].filter(Boolean).join("\n\n");
+  }
+
+  return [starterCode, answerCode, normalizedTestCaseInput]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function buildJavaScriptCheckedPreviewDocument(
+  question: PublicQuestion,
+  answerCode: string,
+) {
+  const language = (question.coding_language ?? "javascript") as
+    | "javascript"
+    | "html"
+    | "css";
+  if (language !== "javascript") {
+    return buildLivePreviewDocument(language, answerCode);
+  }
+
+  const testCase = question.coding_test_cases?.[0];
+  if (!testCase) {
+    return buildLivePreviewDocument(language, answerCode);
+  }
+
+  const codeToRun = buildJavaScriptExecutionCode(
+    question.coding_starter_code ?? "",
+    answerCode,
+    testCase.input,
+  );
+
+  const output = compileAndRunJavaScript({
+    code: codeToRun,
+    language: "javascript",
+  }).then((result) => {
+    const content = result.ok
+      ? result.output || "(tanpa output)"
+      : result.error;
+    return `<!DOCTYPE html><html><body style="font-family:system-ui;padding:20px;background:#f8fafc;color:#111827;">
+        <div style="padding:20px;border-radius:12px;background:#fff;box-shadow:0 12px 24px rgba(15,23,42,0.08); border:1px solid #e2e8f0;">
+          <pre style="margin:0;white-space:pre-wrap;word-break:break-word;color:${result.ok ? "#0f172a" : "#b91c1c"};font-family:monospace;">${escapeHtml(content)}</pre>
+        </div>
+      </body></html>`;
+  });
+
+  return output;
 }
 
 function openHtmlInNewWindow(html: string, title = "Code Live Preview") {
@@ -211,6 +334,9 @@ export default function KerjakanClient() {
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
   const [questionResults, setQuestionResults] = useState<
     Record<string, { isCorrect: boolean; message: string; checked: boolean }>
+  >({});
+  const [checkedPreviewDocuments, setCheckedPreviewDocuments] = useState<
+    Record<string, string>
   >({});
   const questionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -355,6 +481,34 @@ export default function KerjakanClient() {
         checked: true,
       },
     }));
+
+    if ((question.coding_language ?? "javascript") === "javascript") {
+      const testCase = question.coding_test_cases?.[0];
+      if (testCase) {
+        const compiledCode = buildJavaScriptExecutionCode(
+          question.coding_starter_code ?? "",
+          code,
+          testCase.input,
+        );
+        const result = await compileAndRunJavaScript({
+          code: compiledCode,
+          language: "javascript",
+        });
+
+        const previewDocument = `<!DOCTYPE html><html><body style="font-family:system-ui;padding:20px;background:#f8fafc;color:#111827;">
+          <div style="padding:20px;border-radius:12px;background:#fff;box-shadow:0 12px 24px rgba(15,23,42,0.08); border:1px solid #e2e8f0;">
+            <pre style="margin:0;white-space:pre-wrap;word-break:break-word;color:${result.ok ? "#0f172a" : "#b91c1c"};font-family:monospace;">${escapeHtml(
+              result.ok ? result.output || "(tanpa output)" : result.error,
+            )}</pre>
+          </div>
+        </body></html>`;
+
+        setCheckedPreviewDocuments((prev) => ({
+          ...prev,
+          [question.id]: previewDocument,
+        }));
+      }
+    }
   }
 
   async function submitSingleQuestion(question: PublicQuestion) {
@@ -448,10 +602,14 @@ export default function KerjakanClient() {
       .replace(/\\r\\n/g, "\n") ?? "";
   const activeCodingLanguage = (activeQuestion?.coding_language ??
     "javascript") as "javascript" | "html" | "css";
-  const activeLivePreviewDocument = buildLivePreviewDocument(
-    activeCodingLanguage,
-    codingAnswers[activeQuestion?.id ?? ""] ?? "",
-  );
+  const activeLivePreviewDocument = checkedPreviewDocuments[
+    activeQuestion?.id ?? ""
+  ]
+    ? checkedPreviewDocuments[activeQuestion.id]
+    : buildLivePreviewDocument(
+        activeCodingLanguage,
+        codingAnswers[activeQuestion?.id ?? ""] ?? "",
+      );
   const answerPreviewDocument = activeCodingTestCase
     ? buildAnswerPreviewDocument(
         activeCodingLanguage,
@@ -588,23 +746,9 @@ export default function KerjakanClient() {
                       <div className='flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-red-200 bg-linear-to-br from-red-50 via-white to-rose-50 shadow-sm'>
                         <div className='flex items-center justify-between border-b border-red-100 bg-red-500/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-red-700'>
                           <span>Code Live Preview</span>
-                          <div className='flex items-center gap-2'>
-                            <button
-                              type='button'
-                              onClick={() =>
-                                openHtmlInNewWindow(
-                                  activeLivePreviewDocument,
-                                  "Code Live Preview",
-                                )
-                              }
-                              title='Buka di jendela baru'
-                              className='text-red-700 transition hover:text-red-900'>
-                              <ExternalLinkIcon />
-                            </button>
-                            <span className='rounded-full bg-red-600 px-2 py-0.5 text-[10px] text-white'>
-                              AUTO
-                            </span>
-                          </div>
+                          <span className='rounded-full bg-red-600 px-2 py-0.5 text-[10px] text-white'>
+                            AUTO
+                          </span>
                         </div>
                         <iframe
                           title='Live preview'
@@ -617,32 +761,18 @@ export default function KerjakanClient() {
                       <div className='flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-emerald-200 bg-linear-to-br from-emerald-50 via-white to-cyan-50 shadow-sm'>
                         <div className='flex items-center justify-between border-b border-emerald-100 bg-emerald-500/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700'>
                           <span>Answer</span>
-                          <div className='flex items-center gap-2'>
-                            {answerPreviewDocument && (
-                              <button
-                                type='button'
-                                onClick={() =>
-                                  openHtmlInNewWindow(
-                                    answerPreviewDocument,
-                                    "Answer Preview",
-                                  )
-                                }
-                                title='Buka di jendela baru'
-                                className='text-emerald-700 transition hover:text-emerald-900'>
-                                <ExternalLinkIcon />
-                              </button>
-                            )}
-                            <span className='rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] text-white'>
-                              CORRECT
-                            </span>
-                          </div>
+                          <span className='rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] text-white'>
+                            CORRECT
+                          </span>
                         </div>
                         {activeCodingTestCase ? (
                           answerPreviewDocument &&
-                          (questions[activeQuestionIndex].coding_language ??
-                            "javascript") === "html" ? (
+                          ["html", "css"].includes(
+                            questions[activeQuestionIndex].coding_language ??
+                              "javascript",
+                          ) ? (
                             <iframe
-                              title='Preview validasi HTML'
+                              title='Preview validasi'
                               srcDoc={answerPreviewDocument}
                               className='h-full w-full border-0 bg-white'
                               sandbox='allow-scripts allow-modals'

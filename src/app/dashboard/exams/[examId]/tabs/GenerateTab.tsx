@@ -13,6 +13,7 @@ type Draft = {
   language?: "javascript" | "html" | "css";
   prompt?: string;
   starter_code?: string;
+  solution_code?: string;
   test_cases?: Array<{ input: string; expected_output: string }>;
   expected_output_type?: "stdout" | "html" | "css";
 };
@@ -87,6 +88,7 @@ export default function GenerateTab({
             language: q.language ?? "javascript",
             prompt: q.prompt ?? "",
             starter_code: q.starter_code ?? "",
+            solution_code: q.solution_code ?? "",
             test_cases: q.test_cases ?? [{ input: "", expected_output: "" }],
             expected_output_type: q.expected_output_type ?? "stdout",
           }),
@@ -396,6 +398,19 @@ export default function GenerateTab({
                             onChange={(e) =>
                               updateDraft(index, {
                                 starter_code: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div>
+                          <label className='label'>Solution code lengkap</label>
+                          <textarea
+                            className='input font-mono'
+                            rows={6}
+                            value={d.solution_code ?? ""}
+                            onChange={(e) =>
+                              updateDraft(index, {
+                                solution_code: e.target.value,
                               })
                             }
                           />

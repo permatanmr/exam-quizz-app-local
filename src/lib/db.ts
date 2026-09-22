@@ -67,6 +67,7 @@ function migrate() {
       coding_language TEXT,
       coding_prompt TEXT,
       coding_starter_code TEXT,
+      coding_solution_code TEXT,
       coding_test_cases TEXT,
       coding_expected_output_type TEXT,
       created_at TEXT NOT NULL
@@ -129,6 +130,11 @@ function migrate() {
     !questionColumns.some((column) => column.name === "coding_starter_code")
   ) {
     db.exec("ALTER TABLE question ADD COLUMN coding_starter_code TEXT");
+  }
+  if (
+    !questionColumns.some((column) => column.name === "coding_solution_code")
+  ) {
+    db.exec("ALTER TABLE question ADD COLUMN coding_solution_code TEXT");
   }
   if (!questionColumns.some((column) => column.name === "coding_test_cases")) {
     db.exec("ALTER TABLE question ADD COLUMN coding_test_cases TEXT");

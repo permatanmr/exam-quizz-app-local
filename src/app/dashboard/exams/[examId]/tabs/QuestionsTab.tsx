@@ -24,6 +24,7 @@ type FormState = {
   language: "javascript" | "html" | "css";
   prompt: string;
   starter_code: string;
+  solution_code: string;
   test_cases: CodingTestCase[];
   expected_output_type: "stdout" | "html" | "css";
 };
@@ -39,6 +40,7 @@ function emptyForm(): FormState {
     language: "javascript",
     prompt: "",
     starter_code: "",
+    solution_code: "",
     test_cases: [{ input: "console.log(2 + 3);", expected_output: "5" }],
     expected_output_type: "stdout",
   };
@@ -92,6 +94,7 @@ export default function QuestionsTab({
         (q.coding_language as "javascript" | "html" | "css") ?? "javascript",
       prompt: q.coding_prompt ?? "",
       starter_code: q.coding_starter_code ?? "",
+      solution_code: q.coding_solution_code ?? "",
       test_cases: q.coding_test_cases ?? [{ input: "", expected_output: "" }],
       expected_output_type:
         (q.coding_expected_output_type as "stdout" | "html" | "css") ??
@@ -167,6 +170,7 @@ export default function QuestionsTab({
               language: form.language,
               prompt: form.prompt,
               starter_code: form.starter_code,
+              solution_code: form.solution_code,
               test_cases: form.test_cases,
               expected_output_type: form.expected_output_type,
             }
@@ -342,6 +346,20 @@ export default function QuestionsTab({
                     setForm((f) => ({ ...f, starter_code: e.target.value }))
                   }
                   placeholder='function tambah(a, b) {\n  // tulis jawaban di sini\n}'
+                />
+              </div>
+
+              <div>
+                <label className='label'>Jawaban benar / solusi lengkap</label>
+                <textarea
+                  className='input font-mono text-sm'
+                  rows={8}
+                  required
+                  value={form.solution_code}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, solution_code: e.target.value }))
+                  }
+                  placeholder='function tambah(a, b) {\n  return a + b;\n}'
                 />
               </div>
 

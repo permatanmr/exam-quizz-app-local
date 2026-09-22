@@ -95,6 +95,37 @@ export async function compileAndRunJavaScript(input: {
   }
 }
 
+function buildJavaScriptExecutionCode(
+  starterCode: string,
+  answerCode: string,
+  testCaseInput: string,
+) {
+  const placeholderPatterns = [
+    /__USER_CODE__/g,
+    /__ANSWER_CODE__/g,
+    /\{\{\s*USER_CODE\s*\}\}/g,
+    /<<USER_CODE>>/g,
+    /\[\[USER_CODE\]\]/g,
+  ];
+
+  const normalizedTestCaseInput = (testCaseInput ?? "").trim();
+  const hasPlaceholder = placeholderPatterns.some((pattern) =>
+    pattern.test(normalizedTestCaseInput),
+  );
+
+  if (hasPlaceholder) {
+    let interpolated = normalizedTestCaseInput;
+    for (const pattern of placeholderPatterns) {
+      interpolated = interpolated.replace(pattern, answerCode);
+    }
+    return [starterCode, interpolated].filter(Boolean).join("\n\n");
+  }
+
+  return [starterCode, answerCode, normalizedTestCaseInput]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 export async function evaluateCodingAnswer(
   spec: CodingQuestionSpec,
   answerCode: string,
@@ -108,11 +139,14 @@ export async function evaluateCodingAnswer(
   }
 
   const starter = spec.starterCode ?? "";
-  const fullCode = [starter, answerCode].filter(Boolean).join("\n");
 
   if (spec.language === "javascript") {
     for (const testCase of spec.testCases) {
-      const finalCode = [fullCode, testCase.input].filter(Boolean).join("\n");
+      const finalCode = buildJavaScriptExecutionCode(
+        starter,
+        answerCode,
+        testCase.input,
+      );
       const result = await compileAndRunJavaScript({
         code: finalCode,
         language: "javascript",
