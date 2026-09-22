@@ -144,6 +144,54 @@ function buildLivePreviewDocument(
   </body></html>`;
 }
 
+function buildAnswerPreviewDocument(
+  language: "javascript" | "html" | "css",
+  expectedOutput: string,
+) {
+  const safe = (expectedOutput ?? "").trim();
+
+  if (language === "html") {
+    return `<!DOCTYPE html><html><head><style>html,body{margin:0;padding:0;background:#fff;color:#0f172a;font-family:system-ui;}*{box-sizing:border-box;}body{padding:12px;}</style></head><body>${safe || "<p></p>"}</body></html>`;
+  }
+
+  return `<!DOCTYPE html><html><body style="font-family:monospace;white-space:pre-wrap;padding:16px;background:#f8fafc;color:#065f46;">${escapeHtml(safe || "-")}</body></html>`;
+}
+
+function openHtmlInNewWindow(html: string, title = "Code Live Preview") {
+  const win = window.open(
+    `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
+    "_blank",
+    "noopener,noreferrer,width=1400,height=900,resizable=yes,scrollbars=yes",
+  );
+  if (!win) return;
+
+  try {
+    win.document.title = title;
+  } catch {
+    // Ignore cross-origin title write issues when using a new document source.
+  }
+
+  win.focus();
+}
+
+function ExternalLinkIcon() {
+  return (
+    <svg
+      xmlns='http://www.w3.org/2000/svg'
+      viewBox='0 0 24 24'
+      fill='none'
+      stroke='currentColor'
+      strokeWidth={2}
+      strokeLinecap='round'
+      strokeLinejoin='round'
+      className='h-3.5 w-3.5'>
+      <path d='M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6' />
+      <polyline points='15 3 21 3 21 9' />
+      <line x1='10' y1='14' x2='21' y2='3' />
+    </svg>
+  );
+}
+
 export default function KerjakanClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -398,6 +446,18 @@ export default function KerjakanClient() {
     activeCodingTestCase?.expected_output
       ?.replace(/\\n/g, "\n")
       .replace(/\\r\\n/g, "\n") ?? "";
+  const activeCodingLanguage = (activeQuestion?.coding_language ??
+    "javascript") as "javascript" | "html" | "css";
+  const activeLivePreviewDocument = buildLivePreviewDocument(
+    activeCodingLanguage,
+    codingAnswers[activeQuestion?.id ?? ""] ?? "",
+  );
+  const answerPreviewDocument = activeCodingTestCase
+    ? buildAnswerPreviewDocument(
+        activeCodingLanguage,
+        activeCodingTestCase.expected_output || "",
+      )
+    : null;
 
   return (
     <div className='flex flex-1 flex-col'>
@@ -484,30 +544,6 @@ export default function KerjakanClient() {
                   </div>
                 )}
 
-                {questions[activeQuestionIndex].question_type === "coding" &&
-                  questionResults[questions[activeQuestionIndex].id] && (
-                    <div
-                      className={`mb-3 rounded-lg border px-3 py-2 text-sm ${
-                        questionResults[questions[activeQuestionIndex].id]
-                          .isCorrect
-                          ? "border-green-200 bg-green-50 text-green-700"
-                          : "border-red-200 bg-red-50 text-red-700"
-                      }`}>
-                      <strong>
-                        {questionResults[questions[activeQuestionIndex].id]
-                          .isCorrect
-                          ? "Jawaban benar."
-                          : "Jawaban salah."}
-                      </strong>
-                      <div className='mt-1 text-xs'>
-                        {
-                          questionResults[questions[activeQuestionIndex].id]
-                            .message
-                        }
-                      </div>
-                    </div>
-                  )}
-
                 {questions[activeQuestionIndex].question_type === "coding" ? (
                   <div className='mt-3 grid w-full gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1.35fr)]'>
                     <div className='flex flex-col gap-2'>
@@ -551,19 +587,28 @@ export default function KerjakanClient() {
                     <div className='grid h-[16rem] grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2'>
                       <div className='flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-red-200 bg-linear-to-br from-red-50 via-white to-rose-50 shadow-sm'>
                         <div className='flex items-center justify-between border-b border-red-100 bg-red-500/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-red-700'>
-                          <span>Live Preview</span>
-                          <span className='rounded-full bg-red-600 px-2 py-0.5 text-[10px] text-white'>
-                            AUTO
-                          </span>
+                          <span>Code Live Preview</span>
+                          <div className='flex items-center gap-2'>
+                            <button
+                              type='button'
+                              onClick={() =>
+                                openHtmlInNewWindow(
+                                  activeLivePreviewDocument,
+                                  "Code Live Preview",
+                                )
+                              }
+                              title='Buka di jendela baru'
+                              className='text-red-700 transition hover:text-red-900'>
+                              <ExternalLinkIcon />
+                            </button>
+                            <span className='rounded-full bg-red-600 px-2 py-0.5 text-[10px] text-white'>
+                              AUTO
+                            </span>
+                          </div>
                         </div>
                         <iframe
                           title='Live preview'
-                          srcDoc={buildLivePreviewDocument(
-                            (questions[activeQuestionIndex].coding_language ??
-                              "javascript") as "javascript" | "html" | "css",
-                            codingAnswers[questions[activeQuestionIndex].id] ??
-                              "",
-                          )}
+                          srcDoc={activeLivePreviewDocument}
                           className='h-full w-full border-0 bg-white'
                           sandbox='allow-scripts allow-modals'
                         />
@@ -571,17 +616,34 @@ export default function KerjakanClient() {
 
                       <div className='flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-emerald-200 bg-linear-to-br from-emerald-50 via-white to-cyan-50 shadow-sm'>
                         <div className='flex items-center justify-between border-b border-emerald-100 bg-emerald-500/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700'>
-                          <span>Preview validasi</span>
-                          <span className='rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] text-white'>
-                            TEST
-                          </span>
+                          <span>Answer</span>
+                          <div className='flex items-center gap-2'>
+                            {answerPreviewDocument && (
+                              <button
+                                type='button'
+                                onClick={() =>
+                                  openHtmlInNewWindow(
+                                    answerPreviewDocument,
+                                    "Answer Preview",
+                                  )
+                                }
+                                title='Buka di jendela baru'
+                                className='text-emerald-700 transition hover:text-emerald-900'>
+                                <ExternalLinkIcon />
+                              </button>
+                            )}
+                            <span className='rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] text-white'>
+                              CORRECT
+                            </span>
+                          </div>
                         </div>
                         {activeCodingTestCase ? (
+                          answerPreviewDocument &&
                           (questions[activeQuestionIndex].coding_language ??
                             "javascript") === "html" ? (
                             <iframe
                               title='Preview validasi HTML'
-                              srcDoc={`<!DOCTYPE html><html><head><style>html,body{margin:0;padding:0;background:#fff;color:#0f172a;font-family:system-ui;}*{box-sizing:border-box;}body{padding:12px;}</style></head><body>${activeCodingTestCase.expected_output || "<p></p>"}</body></html>`}
+                              srcDoc={answerPreviewDocument}
                               className='h-full w-full border-0 bg-white'
                               sandbox='allow-scripts allow-modals'
                             />
@@ -633,18 +695,29 @@ export default function KerjakanClient() {
                   </div>
                 )}
 
-                {questions[activeQuestionIndex].question_type === "coding" && (
-                  <div className='mt-6 flex flex-wrap items-center gap-3'>
-                    <button
-                      type='button'
-                      onClick={() =>
-                        gradeCurrentQuestion(questions[activeQuestionIndex])
-                      }
-                      className='btn btn-secondary text-sm'>
-                      Cek Jawaban
-                    </button>
-                  </div>
-                )}
+                {questions[activeQuestionIndex].question_type === "coding" &&
+                  questionResults[questions[activeQuestionIndex].id] && (
+                    <div
+                      className={`mt-6 rounded-lg border px-3 py-2 text-sm ${
+                        questionResults[questions[activeQuestionIndex].id]
+                          .isCorrect
+                          ? "border-green-200 bg-green-50 text-green-700"
+                          : "border-red-200 bg-red-50 text-red-700"
+                      }`}>
+                      <strong>
+                        {questionResults[questions[activeQuestionIndex].id]
+                          .isCorrect
+                          ? "Jawaban benar."
+                          : "Jawaban salah."}
+                      </strong>
+                      <div className='mt-1 text-xs'>
+                        {
+                          questionResults[questions[activeQuestionIndex].id]
+                            .message
+                        }
+                      </div>
+                    </div>
+                  )}
 
                 <div className='mt-6 flex items-center justify-between gap-3'>
                   <button
@@ -656,6 +729,17 @@ export default function KerjakanClient() {
                     className='btn btn-secondary text-sm disabled:opacity-40'>
                     Sebelumnya
                   </button>
+                  {questions[activeQuestionIndex].question_type ===
+                    "coding" && (
+                    <button
+                      type='button'
+                      onClick={() =>
+                        gradeCurrentQuestion(questions[activeQuestionIndex])
+                      }
+                      className='btn btn-danger text-sm'>
+                      Cek Jawaban
+                    </button>
+                  )}
                   <button
                     type='button'
                     onClick={() =>
@@ -664,7 +748,7 @@ export default function KerjakanClient() {
                       )
                     }
                     disabled={activeQuestionIndex === questions.length - 1}
-                    className='btn btn-secondary text-sm disabled:opacity-40'>
+                    className='btn btn-primary text-sm disabled:opacity-40'>
                     Selanjutnya
                   </button>
                 </div>
@@ -680,26 +764,29 @@ export default function KerjakanClient() {
                   {answeredCount}/{questions.length} terjawab
                 </p>
               </div>
-              <div className='flex flex-wrap gap-2 xl:flex-col'>
+              <div className='flex flex-wrap gap-2'>
                 {questions.map((q, index) => {
-                  const status = questionStatus[q.id] ?? "unanswered";
                   const isActive = index === activeQuestionIndex;
+                  const isAnswered =
+                    q.question_type === "coding"
+                      ? (questionResults[q.id]?.isCorrect ?? false)
+                      : Boolean(answers[q.id]);
+                  const statusColor = isActive
+                    ? "border-red-500 text-red-600 bg-red-50"
+                    : isAnswered
+                      ? "border-green-500 text-green-600 bg-green-50"
+                      : "border-slate-300 text-slate-600 bg-white";
+
                   return (
                     <button
                       key={q.id}
                       type='button'
                       onClick={() => jumpToQuestion(q.id)}
-                      className={`flex h-9 w-9 items-center justify-center rounded-full border text-xs font-semibold transition ${
-                        isActive
-                          ? "border-primary bg-primary/10 text-primary"
-                          : status === "answered"
-                            ? "border-green-500 bg-green-50 text-green-700"
-                            : "border-border bg-white text-muted"
-                      }`}
+                      className={`flex h-9 w-9 items-center justify-center rounded-full border text-xs font-semibold transition ${statusColor}`}
                       title={
-                        status === "answered"
-                          ? `Soal ${index + 1} sudah dijawab`
-                          : `Soal ${index + 1} belum dijawab`
+                        isAnswered
+                          ? `Soal ${index + 1} sudah dijawab benar`
+                          : `Soal ${index + 1} belum dijawab benar`
                       }>
                       {index + 1}
                     </button>

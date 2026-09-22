@@ -72,6 +72,14 @@ body {
 .btn-danger:hover:not(:disabled) {
   background: #fee2e2;
 }
+.btn-success {
+  background: #f0fdf4;
+  color: var(--success);
+  border-color: #bbf7d0;
+}
+.btn-success:hover:not(:disabled) {
+  background: #dcfce7;
+}
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
