@@ -208,6 +208,7 @@ export const saveAnswerSchema = z.object({
   question_id: z.string().min(1),
   selected_option_id: z.string().min(1).nullable().optional(),
   answer_text: z.string().nullable().optional(),
+  is_correct: z.boolean().nullable().optional(),
 });
 
 export const manualScoreUpdateSchema = z.object({

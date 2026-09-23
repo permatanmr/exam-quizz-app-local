@@ -15,6 +15,7 @@ type PublicQuestion = {
   order_index: number;
   selected_option_id: string | null;
   answer_text: string | null;
+  is_correct: boolean | null;
   coding_language?: string | null;
   coding_prompt?: string | null;
   coding_starter_code?: string | null;
@@ -420,6 +421,16 @@ export default function KerjakanClient() {
             ...prev,
             [q.id]: q.answer_text ?? q.coding_starter_code ?? "",
           }));
+          if (q.is_correct !== null) {
+            setQuestionResults((prev) => ({
+              ...prev,
+              [q.id]: {
+                isCorrect: q.is_correct,
+                message: q.is_correct ? "Jawaban benar." : "Jawaban salah.",
+                checked: true,
+              },
+            }));
+          }
         }
       }
       setAnswers(initialAnswers);
@@ -532,6 +543,18 @@ export default function KerjakanClient() {
         checked: true,
       },
     }));
+
+    if (attemptId) {
+      await fetch(`/api/public/attempts/${attemptId}/answer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question_id: question.id,
+          answer_text: code,
+          is_correct: evaluation.isCorrect,
+        }),
+      });
+    }
 
     if ((question.coding_language ?? "javascript") === "javascript") {
       const testCase = question.coding_test_cases?.[0];

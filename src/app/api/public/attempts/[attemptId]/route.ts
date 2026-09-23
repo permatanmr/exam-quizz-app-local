@@ -48,17 +48,22 @@ export async function GET(_request: Request, { params }: Params) {
 
   const answerRows = db
     .prepare(
-      "SELECT question_id, selected_option_id, answer_text FROM attempt_answer WHERE attempt_id = ?",
+      "SELECT question_id, selected_option_id, answer_text, is_correct FROM attempt_answer WHERE attempt_id = ?",
     )
     .all(attemptId) as {
     question_id: string;
     selected_option_id: string | null;
     answer_text: string | null;
+    is_correct: number | null;
   }[];
   const answerMap = new Map(
     answerRows.map((a) => [
       a.question_id,
-      { selected_option_id: a.selected_option_id, answer_text: a.answer_text },
+      {
+        selected_option_id: a.selected_option_id,
+        answer_text: a.answer_text,
+        is_correct: a.is_correct,
+      },
     ]),
   );
 
@@ -79,6 +84,10 @@ export async function GET(_request: Request, { params }: Params) {
         answer_text:
           q.question_type === "coding"
             ? (savedAnswer?.answer_text ?? null)
+            : null,
+        is_correct:
+          q.question_type === "coding" && savedAnswer?.is_correct != null
+            ? savedAnswer?.is_correct === 1
             : null,
       };
     });
