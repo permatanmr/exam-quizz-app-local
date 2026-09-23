@@ -141,6 +141,136 @@ test("evaluateCodingAnswer accepts a CSS answer identical to the saved solution"
   assert.equal(result.message.includes("benar"), true);
 });
 
+test("evaluateCodingAnswer accepts equivalent CSS solution markup with different quote styles", async () => {
+  const spec: CodingQuestionSpec = {
+    type: "coding",
+    language: "css",
+    prompt: "Buat tombol dengan latar merah dan teks putih.",
+    starterCode: "",
+    testCases: [
+      {
+        input: "",
+        expected_output:
+          "<style>.btn{background:red;color:white;padding:12px}</style><button class='btn'>Klik</button>",
+      },
+    ],
+    expectedOutputType: "css",
+  };
+
+  const solution =
+    '<style>.btn { background: red; color: white; padding: 12px; }</style><button class="btn">Klik</button>';
+  const answer =
+    "<style>.btn { background: red; color: white; padding: 12px; }</style><button class='btn'>Klik</button>";
+
+  const result = await evaluateCodingAnswer(spec, answer, solution);
+
+  assert.equal(result.isCorrect, true);
+  assert.equal(result.message.includes("benar"), true);
+});
+
+test("evaluateCodingAnswer does not duplicate declarations when the test case already contains starter code", async () => {
+  const spec: CodingQuestionSpec = {
+    type: "coding",
+    language: "javascript",
+    prompt: "Hitung jumlah task yang aktif.",
+    starterCode: "const tasks = ['a', 'b'];",
+    testCases: [
+      {
+        input:
+          "const tasks = ['a', 'b'];\nconst filtered = tasks.filter((task) => task.length > 0);\nconsole.log(filtered.length);",
+        expected_output: "2",
+      },
+    ],
+    expectedOutputType: "stdout",
+  };
+
+  const result = await evaluateCodingAnswer(
+    spec,
+    "const filtered = tasks.filter((task) => task.length > 0);",
+    spec.starterCode,
+  );
+
+  assert.equal(result.isCorrect, true);
+  assert.equal(result.message.includes("benar"), true);
+});
+
+test("evaluateCodingAnswer accepts direct array return from JavaScript function", async () => {
+  const spec: CodingQuestionSpec = {
+    type: "coding",
+    language: "javascript",
+    prompt: "Buat fungsi yang mengembalikan array tugas.",
+    starterCode: "function getTasks() {",
+    testCases: [
+      {
+        input:
+          "function getTasks() {\n  return ['a', 'b', 'c'];\n}\nconsole.log(getTasks().join(','));",
+        expected_output: "a,b,c",
+      },
+    ],
+    expectedOutputType: "stdout",
+  };
+
+  const result = await evaluateCodingAnswer(
+    spec,
+    "return ['a', 'b', 'c'];",
+    "",
+  );
+
+  assert.equal(result.isCorrect, true);
+  assert.equal(result.message.includes("benar"), true);
+});
+
+test("evaluateCodingAnswer accepts tasks-array solution without duplicate declaration", async () => {
+  const starter = `let tasks = [];
+function addTask(task) {
+  tasks.push(task);
+  return tasks;
+}`;
+
+  const spec: CodingQuestionSpec = {
+    type: "coding",
+    language: "javascript",
+    prompt:
+      "Buat fungsi addTask yang menambahkan task ke array dan mengembalikannya.",
+    starterCode: starter,
+    testCases: [
+      {
+        input: `${starter}\nconsole.log(JSON.stringify(addTask('A')));`,
+        expected_output: '["A"]',
+      },
+    ],
+    expectedOutputType: "stdout",
+  };
+
+  const result = await evaluateCodingAnswer(spec, starter, starter);
+
+  assert.equal(result.isCorrect, true);
+  assert.equal(result.message.includes("benar"), true);
+});
+
+test("evaluateCodingAnswer accepts exact saved JavaScript solution even without a manual function call", async () => {
+  const solution = `let tasks = [];
+function addTask(task) {
+  tasks.push(task);
+  return tasks;
+}`;
+
+  const spec: CodingQuestionSpec = {
+    type: "coding",
+    language: "javascript",
+    prompt:
+      "Buat fungsi addTask yang menambahkan task ke array dan mengembalikannya.",
+    starterCode: solution,
+    testCases: [{ input: "console.log('x');", expected_output: "x" }],
+    expectedOutputType: "stdout",
+  };
+
+  const result = await evaluateCodingAnswer(spec, solution, solution);
+
+  assert.equal(result.isCorrect, true);
+  assert.equal(result.message.includes("benar"), true);
+});
+
 test("evaluateCodingAnswer rejects wrong output", async () => {
   const spec: CodingQuestionSpec = {
     type: "coding",

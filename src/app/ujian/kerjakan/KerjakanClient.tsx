@@ -251,6 +251,29 @@ function buildJavaScriptExecutionCode(
     /\[\[USER_CODE\]\]/g,
   ];
 
+  const starter = (starterCode ?? "").trim();
+  const answer = (answerCode ?? "").trim();
+
+  const buildFinalCode = (body: string) => {
+    const normalizedBody = normalizeEscapedCode(body);
+    const segments: string[] = [];
+
+    if (
+      starter &&
+      !normalizeEscapedCode(starter).includes(normalizeEscapedCode(starter))
+    ) {
+      segments.push(starter);
+    }
+    if (answer && !normalizedBody.includes(answer)) {
+      segments.push(answer);
+    }
+    if (body.trim()) {
+      segments.push(body.trim());
+    }
+
+    return segments.join("\n\n");
+  };
+
   const normalizedTestCaseInput = (testCaseInput ?? "").trim();
   const hasPlaceholder = placeholderPatterns.some((pattern) =>
     pattern.test(normalizedTestCaseInput),
@@ -261,12 +284,10 @@ function buildJavaScriptExecutionCode(
     for (const pattern of placeholderPatterns) {
       interpolated = interpolated.replace(pattern, answerCode);
     }
-    return [starterCode, interpolated].filter(Boolean).join("\n\n");
+    return buildFinalCode(interpolated);
   }
 
-  return [starterCode, answerCode, normalizedTestCaseInput]
-    .filter(Boolean)
-    .join("\n\n");
+  return buildFinalCode(normalizedTestCaseInput);
 }
 
 function buildJavaScriptCheckedPreviewDocument(

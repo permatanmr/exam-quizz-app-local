@@ -34,10 +34,37 @@ function normalizeText(value?: string | null) {
     .trim();
 }
 
+function normalizeCodeForComparison(value: string) {
+  return normalizeText(value)
+    .replace(/\s*;\s*/g, ";")
+    .replace(/\s*\{\s*/g, "{")
+    .replace(/\s*}\s*/g, "}")
+    .replace(/\s*\(\s*/g, "(")
+    .replace(/\s*\)\s*/g, ")")
+    .replace(/\s*\+\s*/g, "+")
+    .replace(/\s*\=\s*/g, "=")
+    .replace(/\s*,\s*/g, ",")
+    .replace(/\s*:\s*/g, ":");
+}
+
 function normalizeHtmlLike(value: string) {
   return normalizeText(value)
+    .replace(/<\s*([a-zA-Z0-9-]+)(\s*[^>]*)>/g, (_, tag, attrs = "") => {
+      const normalizedAttrs = attrs
+        .replace(
+          /\s*([a-zA-Z0-9_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g,
+          ' $1="$2$3$4"',
+        )
+        .replace(/\s+/g, " ")
+        .trim();
+      return `<${tag}${normalizedAttrs ? ` ${normalizedAttrs}` : ""}>`;
+    })
     .replace(/>\s+</g, "><")
     .replace(/\s+/g, " ")
+    .replace(/\s*([=<>])/g, "$1")
+    .replace(/([=<>])\s*/g, "$1")
+    .replace(/\s+>/g, ">")
+    .replace(/<\s+/g, "<")
     .toLowerCase();
 }
 
@@ -70,20 +97,52 @@ export async function compileAndRunJavaScript(input: {
       "console",
       `
         return (async () => {
-          ${input.code}
+          const __result = (() => {
+            ${input.code}
+          })();
+
+          if (__result && typeof __result.then === 'function') {
+            return await __result;
+          }
+
+          return __result;
         })();
       `,
     );
 
-    await runner({
+    const result = await runner({
       log: (...args: unknown[]) => logs.push(args.map(String).join(" ")),
       error: (...args: unknown[]) => logs.push(args.map(String).join(" ")),
       warn: (...args: unknown[]) => logs.push(args.map(String).join(" ")),
     });
 
+    if (typeof result === "undefined") {
+      return {
+        ok: true,
+        output: logs.join("\n"),
+        error: "",
+      };
+    }
+
+    if (typeof result === "string") {
+      return {
+        ok: true,
+        output: result,
+        error: "",
+      };
+    }
+
+    if (Array.isArray(result) || typeof result === "object") {
+      return {
+        ok: true,
+        output: JSON.stringify(result),
+        error: "",
+      };
+    }
+
     return {
       ok: true,
-      output: logs.join("\n"),
+      output: String(result),
       error: "",
     };
   } catch (error) {
@@ -108,7 +167,13 @@ function buildJavaScriptExecutionCode(
     /\[\[USER_CODE\]\]/g,
   ];
 
+  const starter = (starterCode ?? "").trim();
+  const answer = (answerCode ?? "").trim();
   const normalizedTestCaseInput = (testCaseInput ?? "").trim();
+  const normalizedBody = normalizeCodeForComparison(normalizedTestCaseInput);
+  const normalizedStarter = normalizeCodeForComparison(starter);
+  const normalizedAnswer = normalizeCodeForComparison(answer);
+
   const hasPlaceholder = placeholderPatterns.some((pattern) =>
     pattern.test(normalizedTestCaseInput),
   );
@@ -118,12 +183,22 @@ function buildJavaScriptExecutionCode(
     for (const pattern of placeholderPatterns) {
       interpolated = interpolated.replace(pattern, answerCode);
     }
-    return [starterCode, interpolated].filter(Boolean).join("\n\n");
+    const nextBody = normalizeCodeForComparison(interpolated);
+    return [
+      starter && !nextBody.includes(normalizedStarter) ? starter : null,
+      interpolated,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
   }
 
-  return [starterCode, answerCode, normalizedTestCaseInput]
-    .filter(Boolean)
-    .join("\n\n");
+  const segments = [
+    starter && !normalizedBody.includes(normalizedStarter) ? starter : null,
+    answer && !normalizedBody.includes(normalizedAnswer) ? answer : null,
+    normalizedTestCaseInput || null,
+  ].filter(Boolean) as string[];
+
+  return segments.join("\n\n");
 }
 
 export async function evaluateCodingAnswer(
@@ -142,6 +217,19 @@ export async function evaluateCodingAnswer(
   const starter = spec.starterCode ?? "";
 
   if (spec.language === "javascript") {
+    const exactSolutionMatch =
+      correctSolutionCode &&
+      normalizeCodeForComparison(answerCode) ===
+        normalizeCodeForComparison(correctSolutionCode);
+
+    if (exactSolutionMatch) {
+      return {
+        isCorrect: true,
+        message:
+          "Jawaban benar. Struktur kode sesuai dengan solusi yang benar.",
+      };
+    }
+
     for (const testCase of spec.testCases) {
       const finalCode = buildJavaScriptExecutionCode(
         starter,
