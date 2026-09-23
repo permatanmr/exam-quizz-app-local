@@ -92,6 +92,55 @@ test("evaluateCodingAnswer accepts partial starter code with __USER_CODE__ place
   assert.equal(result.message.includes("benar"), true);
 });
 
+test("evaluateCodingAnswer accepts HTML+CSS CSS answers that render in preview", async () => {
+  const spec: CodingQuestionSpec = {
+    type: "coding",
+    language: "css",
+    prompt: "Buat tombol dengan latar merah dan teks putih.",
+    starterCode: "",
+    testCases: [
+      {
+        input: "",
+        expected_output:
+          "<style>.btn { background: red; color: white; padding: 12px; }</style><button class='btn'>Klik</button>",
+      },
+    ],
+    expectedOutputType: "css",
+  };
+
+  const result = await evaluateCodingAnswer(
+    spec,
+    "<style>\n  .btn {\n    background: red;\n    color: white;\n    padding: 12px;\n  }\n</style>\n<button class='btn'>Klik</button>",
+  );
+
+  assert.equal(result.isCorrect, true);
+  assert.equal(result.message.includes("benar"), true);
+});
+
+test("evaluateCodingAnswer accepts a CSS answer identical to the saved solution", async () => {
+  const spec: CodingQuestionSpec = {
+    type: "coding",
+    language: "css",
+    prompt: "Buat tombol dengan latar merah dan teks putih.",
+    starterCode: "",
+    testCases: [
+      {
+        input: "",
+        expected_output: "<style>.btn{background:red;color:white;}</style>",
+      },
+    ],
+    expectedOutputType: "css",
+  };
+
+  const solution =
+    "<style>\n  .btn {\n    background: red;\n    color: white;\n  }\n</style>\n<button class='btn'>Klik</button>";
+
+  const result = await evaluateCodingAnswer(spec, solution, solution);
+
+  assert.equal(result.isCorrect, true);
+  assert.equal(result.message.includes("benar"), true);
+});
+
 test("evaluateCodingAnswer rejects wrong output", async () => {
   const spec: CodingQuestionSpec = {
     type: "coding",

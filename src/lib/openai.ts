@@ -92,7 +92,7 @@ export function buildQuestionSchema(
     solution_code: {
       type: "string",
       description:
-        "Kode solusi lengkap yang benar untuk soal coding ini. Ini wajib berisi jawaban final yang lengkap dan siap dijalankan, serta harus sesuai dengan test_cases yang dibuat untuk bahasa coding yang dipilih (JavaScript, HTML, atau CSS).",
+        "Kode solusi lengkap yang benar untuk soal coding ini. Ini wajib berisi jawaban final yang lengkap dan siap dijalankan, serta harus sesuai dengan test_cases yang dibuat untuk bahasa coding yang dipilih (JavaScript, HTML, atau CSS). Untuk soal CSS, solusi harus mencakup markup HTML yang dibutuhkan agar hasil bisa dirender di dalam box Code Live Preview saat ujian; CSS saja tidak cukup jika preview memerlukan elemen HTML yang akan di-styling.",
     },
     test_cases: {
       type: "array",
@@ -254,7 +254,7 @@ export async function generateQuestions(
       : "Format soal pilihan ganda harus berisi field text, options, correct_option_id, dan explanation.",
     "Buat soal yang jelas, tidak ambigu, relevan secara akademis, dan hindari pengulangan antar soal.",
     questionType === "coding"
-      ? "Wajib sertakan field solution_code yang berisi jawaban lengkap yang benar untuk soal ini. solution_code harus dapat dijalankan dan konsisten dengan expected_output dan test_cases."
+      ? "Wajib sertakan field solution_code yang berisi jawaban lengkap yang benar untuk soal ini. solution_code harus dapat dijalankan dan konsisten dengan expected_output dan test_cases. Untuk soal CSS, solution_code HARUS mencakup HTML yang dibutuhkan agar dapat dirender di live preview; jangan kirim CSS saja tanpa markup HTML yang relevan."
       : "",
     questionType === "coding"
       ? "Untuk JavaScript, setiap test_cases[i].input HARUS berupa program lengkap yang siap dijalankan dan di-assert. Artinya, input tersebut harus berisi seluruh konteks program sehingga bisa compile dan menghasilkan output. Jika soal menuntut siswa menulis bagian inti logika, maka bagian yang hilang harus ditandai dengan placeholder __USER_CODE__ di dalam input, dan starter_code berperan sebagai bagian program yang sudah tersedia di awal atau di sekitar bagian yang dihilangkan. Hasil expected_output harus sama persis dengan output console program yang sudah selesai. Jawaban siswa benar hanya jika output program yang dikompilasi sama persis dengan expected_output."
@@ -263,7 +263,7 @@ export async function generateQuestions(
       ? "Untuk JavaScript, starter_code bukanlah solusi lengkap. starter_code harus berupa potongan program yang sudah ada, tetapi inti solusinya dihilangkan sebagian. Test case input harus menunjukkan bagaimana potongan itu dipasang kembali menjadi program yang lengkap, dengan placeholder __USER_CODE__ pada bagian yang siswa harus isi. Jangan buat test case yang hanya berisi ekspresi acak; buat program yang benar-benar dapat di-compile dan dibandingkan outputnya."
       : "",
     questionType === "coding"
-      ? "Gunakan expected_output_type sesuai jenis soal: stdout untuk console output, html untuk markup/html, css untuk deklarasi CSS."
+      ? "Gunakan expected_output_type sesuai jenis soal: stdout untuk console output, html untuk markup/html, css untuk deklarasi CSS. Khusus soal CSS, solution_code dan hasil preview harus mengandung HTML yang relevan bersama CSS-nya agar bisa dirender dengan benar di box preview pada halaman ujian."
       : "",
   ]
     .filter(Boolean)

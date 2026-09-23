@@ -129,6 +129,7 @@ function buildJavaScriptExecutionCode(
 export async function evaluateCodingAnswer(
   spec: CodingQuestionSpec,
   answerCode: string,
+  correctSolutionCode?: string,
 ): Promise<CodeEvaluationResult> {
   if (spec.testCases.length === 0) {
     return {
@@ -179,26 +180,82 @@ export async function evaluateCodingAnswer(
     };
   }
 
-  const answerNormalized =
-    spec.language === "html"
-      ? normalizeHtmlLike(answerCode)
-      : normalizeCssLike(answerCode);
+  if (spec.language === "html") {
+    const answerNormalized = normalizeHtmlLike(answerCode);
+    const expectedValues = spec.testCases.map((testCase) =>
+      normalizeHtmlLike(testCase.expected_output),
+    );
 
-  const expectedValues = spec.testCases.map((testCase) =>
-    spec.language === "html"
-      ? normalizeHtmlLike(testCase.expected_output)
-      : normalizeCssLike(testCase.expected_output),
-  );
+    const passed = expectedValues.every((expected) =>
+      answerNormalized.includes(expected),
+    );
 
-  const passed = expectedValues.every((expected) =>
-    answerNormalized.includes(expected),
-  );
+    if (!passed) {
+      return {
+        isCorrect: false,
+        message: `Jawaban salah: hasil HTML/CSS tidak sesuai dengan pola yang diharapkan.`,
+        details: expectedValues,
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: "Jawaban benar. Struktur HTML sesuai dengan kriteria soal.",
+    };
+  }
+
+  const extractCssFragment = (value: string) => {
+    const match = value.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+    const fragment = match ? match[1] : value;
+    return normalizeCssLike(fragment);
+  };
+
+  const extractHtmlFragment = (value: string) => {
+    const withoutStyle = value.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+    return normalizeHtmlLike(withoutStyle);
+  };
+
+  const answerCss = extractCssFragment(answerCode);
+  const answerHtml = extractHtmlFragment(answerCode);
+
+  const correctSolution = (correctSolutionCode ?? "").trim();
+  if (correctSolution) {
+    const correctCss = extractCssFragment(correctSolution);
+    const correctHtml = extractHtmlFragment(correctSolution);
+    const exactMatch = answerCss === correctCss && answerHtml === correctHtml;
+    if (exactMatch) {
+      return {
+        isCorrect: true,
+        message:
+          "Jawaban benar. Struktur HTML/CSS sesuai dengan solusi yang benar.",
+      };
+    }
+  }
+
+  const passed = spec.testCases.every((testCase) => {
+    const expectedCss = extractCssFragment(testCase.expected_output ?? "");
+    const expectedHtml = extractHtmlFragment(testCase.expected_output ?? "");
+
+    const cssMatches =
+      expectedCss.length === 0 || answerCss.includes(expectedCss);
+    const htmlMatches =
+      expectedHtml.length === 0 || answerHtml.includes(expectedHtml);
+
+    return cssMatches && htmlMatches;
+  });
 
   if (!passed) {
+    const expectedValues = spec.testCases.map((testCase) => ({
+      css: extractCssFragment(testCase.expected_output ?? ""),
+      html: extractHtmlFragment(testCase.expected_output ?? ""),
+    }));
+
     return {
       isCorrect: false,
       message: `Jawaban salah: hasil HTML/CSS tidak sesuai dengan pola yang diharapkan.`,
-      details: expectedValues,
+      details: expectedValues.map((item) =>
+        JSON.stringify({ css: item.css, html: item.html }),
+      ),
     };
   }
 

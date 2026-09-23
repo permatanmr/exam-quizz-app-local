@@ -60,3 +60,19 @@ test("buildQuestionSchema supports coding question generation for html/css/javas
     assert.ok(itemSchema.required.includes("solution_code"));
   });
 });
+
+test("CSS coding solution schema requires HTML markup so it can render in preview", () => {
+  const schema = buildQuestionSchema({
+    count: 1,
+    numOptions: 4,
+    questionType: "coding",
+    codingLanguage: "css",
+  });
+
+  const itemSchema = (schema.schema.properties.questions as any).items;
+  const description = String(itemSchema.properties.solution_code.description);
+
+  assert.match(description, /HTML/i);
+  assert.match(description, /CSS/i);
+  assert.match(description, /render|preview/i);
+});

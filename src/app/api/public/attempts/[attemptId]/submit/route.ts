@@ -81,7 +81,11 @@ export async function POST(_request: Request, { params }: Params) {
           | "html"
           | "css",
       };
-      const grading = await evaluateCodingAnswer(spec, code);
+      const grading = await evaluateCodingAnswer(
+        spec,
+        code,
+        q.coding_solution_code ?? undefined,
+      );
       isCorrect = grading.isCorrect;
     } else if (selected !== undefined && selected !== null) {
       isCorrect = selected === q.correct_option_id;

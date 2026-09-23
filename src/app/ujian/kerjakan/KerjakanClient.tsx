@@ -18,6 +18,7 @@ type PublicQuestion = {
   coding_language?: string | null;
   coding_prompt?: string | null;
   coding_starter_code?: string | null;
+  coding_solution_code?: string | null;
   coding_test_cases?: { input: string; expected_output: string }[];
 };
 
@@ -127,6 +128,34 @@ function buildCssPreviewDocument(css: string, label: string) {
   </style></head><body><div class="demo"><h2>${label}</h2><p>Contoh elemen yang distyling oleh CSS.</p><button>Button Demo</button></div></body></html>`;
 }
 
+function buildCssRenderableDocument(source: string, label: string) {
+  const code = (source ?? "").trim();
+  if (!code) {
+    return buildCssPreviewDocument("", label);
+  }
+
+  const hasHtmlStructure =
+    /<\s*(html|body|div|section|button|p|h[1-6]|ul|ol|li|table|form|input|img|span|a|label)[\s>]/i.test(
+      code,
+    );
+  if (!hasHtmlStructure) {
+    return buildCssPreviewDocument(code, label);
+  }
+
+  const styleMatch = code.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+  const cssBlock = styleMatch?.[1]?.trim() || "";
+  const bodyMatch = code.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const htmlBody =
+    bodyMatch?.[1]?.trim() ||
+    code.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "").trim();
+
+  return `<!DOCTYPE html><html><head><style>
+    html,body{margin:0;padding:0;font-family:system-ui;background:#f8fafc;color:#111827;}
+    body{padding:24px;}
+    ${cssBlock || "body{padding:24px;} .demo{padding:20px;border-radius:16px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 12px 24px rgba(15,23,42,0.08);} h2{margin:0 0 12px;color:#111827;} p{margin:0 0 12px;color:#334155;} button{padding:10px 15px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:600;}"}
+  </style></head><body>${htmlBody || `<div class="demo"><h2>${label}</h2><p>Contoh elemen yang distyling oleh CSS.</p><button>Button Demo</button></div>`}</body></html>`;
+}
+
 function buildLivePreviewDocument(
   language: "javascript" | "html" | "css",
   code: string,
@@ -138,7 +167,7 @@ function buildLivePreviewDocument(
   }
 
   if (language === "css") {
-    return buildCssPreviewDocument(trimmed, "Preview CSS");
+    return buildCssRenderableDocument(trimmed, "Preview CSS");
   }
 
   const safeScript = (
@@ -199,9 +228,9 @@ function buildAnswerPreviewDocument(
   }
 
   if (language === "css") {
-    return buildCssPreviewDocument(
+    return buildCssRenderableDocument(
       safe ||
-        ".demo{padding:20px;border-radius:12px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 12px 24px rgba(15,23,42,0.08);}",
+        "<style>.demo{padding:20px;border-radius:12px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 12px 24px rgba(15,23,42,0.08);}</style><div class='demo'>Answer Preview</div>",
       "Answer Preview",
     );
   }
@@ -471,6 +500,7 @@ export default function KerjakanClient() {
         expectedOutputType: "stdout",
       },
       code,
+      question.coding_solution_code ?? undefined,
     );
 
     setQuestionResults((prev) => ({
@@ -606,16 +636,32 @@ export default function KerjakanClient() {
     activeQuestion?.id ?? ""
   ]
     ? checkedPreviewDocuments[activeQuestion.id]
-    : buildLivePreviewDocument(
-        activeCodingLanguage,
-        codingAnswers[activeQuestion?.id ?? ""] ?? "",
-      );
-  const answerPreviewDocument = activeCodingTestCase
-    ? buildAnswerPreviewDocument(
-        activeCodingLanguage,
-        activeCodingTestCase.expected_output || "",
-      )
-    : null;
+    : activeQuestion?.question_type === "coding" &&
+        activeCodingLanguage === "css"
+      ? buildCssRenderableDocument(
+          codingAnswers[activeQuestion.id] ?? "",
+          "Code Live Preview",
+        )
+      : buildLivePreviewDocument(
+          activeCodingLanguage,
+          codingAnswers[activeQuestion?.id ?? ""] ?? "",
+        );
+  const answerPreviewDocument =
+    activeQuestion?.question_type === "coding"
+      ? activeCodingLanguage === "css"
+        ? buildCssRenderableDocument(
+            activeQuestion.coding_solution_code ||
+              activeCodingTestCase?.expected_output ||
+              "",
+            "Answer Preview",
+          )
+        : activeCodingTestCase
+          ? buildAnswerPreviewDocument(
+              activeCodingLanguage,
+              activeCodingTestCase.expected_output || "",
+            )
+          : null
+      : null;
 
   return (
     <div className='flex flex-1 flex-col'>

@@ -73,13 +73,6 @@ export async function PATCH(request: Request, { params }: Params) {
     );
   }
 
-  if (attempt.status !== "submitted") {
-    return NextResponse.json(
-      { error: "Nilai hanya dapat diubah untuk attempt yang sudah selesai." },
-      { status: 400 },
-    );
-  }
-
   const body = await request.json().catch(() => null);
   const parsed = manualScoreUpdateSchema.safeParse(body);
   if (!parsed.success) {
@@ -93,6 +86,13 @@ export async function PATCH(request: Request, { params }: Params) {
   const values: unknown[] = [];
 
   if (parsed.data.score !== undefined) {
+    if (attempt.status !== "submitted") {
+      return NextResponse.json(
+        { error: "Nilai hanya dapat diubah untuk attempt yang sudah selesai." },
+        { status: 400 },
+      );
+    }
+
     const score = Math.round(parsed.data.score * 100) / 100;
     updates.push("score = ?");
     values.push(score);

@@ -297,7 +297,7 @@ export default function GradesTab({
                         : "-"}
                     </td>
                     <td className='px-4 py-2.5 font-semibold'>
-                      {editingId === a.id ? (
+                      {editingId === a.id && a.status === "submitted" ? (
                         <input
                           type='number'
                           min={0}
@@ -338,39 +338,35 @@ export default function GradesTab({
                     <td
                       className='px-4 py-2.5'
                       onClick={(e) => e.stopPropagation()}>
-                      {a.status === "submitted" ? (
-                        editingId === a.id ? (
-                          <div className='flex items-center gap-2'>
-                            <button
-                              onClick={() => saveScore(a)}
-                              disabled={savingId === a.id}
-                              className='btn btn-primary px-2 py-1 text-xs'>
-                              {savingId === a.id ? "Menyimpan..." : "Simpan"}
-                            </button>
-                            <button
-                              onClick={cancelEdit}
-                              disabled={savingId === a.id}
-                              className='btn btn-secondary px-2 py-1 text-xs'>
-                              Batal
-                            </button>
-                          </div>
-                        ) : (
-                          <div className='flex items-center gap-2'>
-                            <button
-                              onClick={() => startEdit(a)}
-                              className='btn btn-secondary px-2 py-1 text-xs'>
-                              Edit Data
-                            </button>
-                            <button
-                              onClick={() => deleteAttempt(a)}
-                              disabled={deletingId === a.id}
-                              className='btn btn-secondary px-2 py-1 text-xs text-danger'>
-                              {deletingId === a.id ? "Menghapus..." : "Hapus"}
-                            </button>
-                          </div>
-                        )
+                      {editingId === a.id ? (
+                        <div className='flex items-center gap-2'>
+                          <button
+                            onClick={() => saveScore(a)}
+                            disabled={savingId === a.id}
+                            className='btn btn-primary px-2 py-1 text-xs'>
+                            {savingId === a.id ? "Menyimpan..." : "Simpan"}
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            disabled={savingId === a.id}
+                            className='btn btn-secondary px-2 py-1 text-xs'>
+                            Batal
+                          </button>
+                        </div>
                       ) : (
-                        <span className='text-xs text-muted'>-</span>
+                        <div className='flex items-center gap-2'>
+                          <button
+                            onClick={() => startEdit(a)}
+                            className='btn btn-secondary px-2 py-1 text-xs'>
+                            Edit Data
+                          </button>
+                          <button
+                            onClick={() => deleteAttempt(a)}
+                            disabled={deletingId === a.id}
+                            className='btn btn-secondary px-2 py-1 text-xs text-danger'>
+                            {deletingId === a.id ? "Menghapus..." : "Hapus"}
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
