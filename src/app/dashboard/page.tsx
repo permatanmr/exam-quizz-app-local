@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getCurrentDosen } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { ExamRow } from "@/lib/types";
+import CopyExamButton from "./CopyExamButton";
 
 type ExamListRow = ExamRow & {
   question_count: number;
@@ -59,12 +60,17 @@ export default async function DashboardPage() {
           {exams.map((exam) => {
             const status = statusLabel[exam.status];
             return (
-              <Link
+              <div
                 key={exam.id}
-                href={`/dashboard/exams/${exam.id}`}
                 className='card flex flex-col gap-3 p-5 transition hover:border-primary'>
                 <div className='flex items-start justify-between gap-2'>
-                  <h2 className='font-semibold leading-snug'>{exam.title}</h2>
+                  <h2 className='font-semibold leading-snug'>
+                    <Link
+                      href={`/dashboard/exams/${exam.id}`}
+                      className='hover:text-primary'>
+                      {exam.title}
+                    </Link>
+                  </h2>
                   <span className={`badge shrink-0 ${status.className}`}>
                     {status.text}
                   </span>
@@ -81,7 +87,10 @@ export default async function DashboardPage() {
                     {exam.code}
                   </span>
                 </div>
-              </Link>
+                <div className='flex justify-end border-t border-border pt-3'>
+                  <CopyExamButton examId={exam.id} />
+                </div>
+              </div>
             );
           })}
         </div>

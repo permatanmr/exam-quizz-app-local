@@ -12,7 +12,6 @@ type PublicQuestion = {
   question_type: "multiple_choice" | "coding";
   text: string;
   options: { id: string; text: string }[];
-  order_index: number;
   selected_option_id: string | null;
   answer_text: string | null;
   is_correct: boolean | null;
@@ -34,6 +33,13 @@ type ExamState = {
   title: string;
   duration_minutes: number;
   show_result_to_student: boolean;
+};
+
+type AnswerSavePayload = {
+  question_id: string;
+  selected_option_id?: string | null;
+  answer_text?: string | null;
+  is_correct?: boolean | null;
 };
 
 function formatTime(totalSeconds: number) {
@@ -380,8 +386,12 @@ export default function KerjakanClient() {
   const [codingAnswers, setCodingAnswers] = useState<Record<string, string>>(
     {},
   );
+  const codingAnswersRef = useRef<Record<string, string>>({});
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [retryingSaves, setRetryingSaves] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
   const [questionResults, setQuestionResults] = useState<
     Record<string, { isCorrect: boolean; message: string; checked: boolean }>
@@ -390,6 +400,122 @@ export default function KerjakanClient() {
     Record<string, string>
   >({});
   const questionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const answerSaveQueue = useRef<Promise<void>>(Promise.resolve());
+  const failedAnswerSaves = useRef<Record<string, AnswerSavePayload>>({});
+  const autoSubmitAttempted = useRef(false);
+
+  const queueAnswerSave = useCallback(
+    (
+      questionId: string,
+      payload: Omit<AnswerSavePayload, "question_id">,
+    ): Promise<void> => {
+      if (!attemptId) return Promise.resolve();
+
+      const body = { question_id: questionId, ...payload };
+      const nextSave = answerSaveQueue.current
+        .catch(() => undefined)
+        .then(async () => {
+          const response = await fetch(
+            `/api/public/attempts/${attemptId}/answer`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+              keepalive: true,
+            },
+          );
+          const data = await response.json().catch(() => null);
+          if (!response.ok) {
+            throw new Error(data?.error ?? "Gagal menyimpan jawaban");
+          }
+          delete failedAnswerSaves.current[questionId];
+          if (Object.keys(failedAnswerSaves.current).length === 0) {
+            setSaveError(null);
+          }
+        })
+        .catch((error: unknown) => {
+          failedAnswerSaves.current[questionId] = body;
+          setSaveError(
+            error instanceof Error ? error.message : "Gagal menyimpan jawaban",
+          );
+          throw error;
+        });
+
+      answerSaveQueue.current = nextSave;
+      void nextSave.catch(() => undefined);
+
+      return nextSave;
+    },
+    [attemptId],
+  );
+
+  const saveCodingAnswerImmediately = useCallback(
+    (questionId: string, payload: Omit<AnswerSavePayload, "question_id">) =>
+      queueAnswerSave(questionId, payload),
+    [queueAnswerSave],
+  );
+
+  const flushAnswerSaves = useCallback(async () => {
+    for (const [questionId, payload] of Object.entries(
+      failedAnswerSaves.current,
+    )) {
+      void queueAnswerSave(questionId, payload).catch(() => undefined);
+    }
+
+    try {
+      await answerSaveQueue.current;
+    } catch {
+      // The failed answer is retained for retry and blocks submission below.
+    }
+    if (Object.keys(failedAnswerSaves.current).length > 0) {
+      throw new Error("Sebagian jawaban belum tersimpan");
+    }
+  }, [queueAnswerSave]);
+
+  const retryFailedSaves = useCallback(async () => {
+    setRetryingSaves(true);
+    try {
+      for (const [questionId, payload] of Object.entries(
+        failedAnswerSaves.current,
+      )) {
+        void queueAnswerSave(questionId, payload).catch(() => undefined);
+      }
+      await answerSaveQueue.current;
+    } catch {
+      // Error ditampilkan oleh queueAnswerSave.
+    } finally {
+      setRetryingSaves(false);
+    }
+  }, [queueAnswerSave]);
+
+  useEffect(() => {
+    const retryWhenOnline = () => {
+      void retryFailedSaves();
+    };
+    window.addEventListener("online", retryWhenOnline);
+    return () => window.removeEventListener("online", retryWhenOnline);
+  }, [retryFailedSaves]);
+
+  useEffect(() => {
+    if (!attemptId) return;
+
+    const saveBeforeLeaving = () => {
+      const question = questions[activeQuestionIndex];
+      if (question?.question_type === "coding") {
+        const body = JSON.stringify({
+          question_id: question.id,
+          answer_text: codingAnswersRef.current[question.id] ?? "",
+        });
+        navigator.sendBeacon(
+          `/api/public/attempts/${attemptId}/answer`,
+          new Blob([body], { type: "application/json" }),
+        );
+      }
+    };
+
+    window.addEventListener("pagehide", saveBeforeLeaving);
+    return () => window.removeEventListener("pagehide", saveBeforeLeaving);
+  }, [activeQuestionIndex, attemptId, questions]);
 
   const load = useCallback(async () => {
     if (!attemptId) {
@@ -400,7 +526,9 @@ export default function KerjakanClient() {
       return;
     }
     try {
-      const res = await fetch(`/api/public/attempts/${attemptId}`);
+      const res = await fetch(`/api/public/attempts/${attemptId}`, {
+        cache: "no-store",
+      });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Sesi ujian tidak ditemukan");
@@ -414,19 +542,24 @@ export default function KerjakanClient() {
       setExam(data.exam);
       setQuestions(data.questions);
       const initialAnswers: Record<string, string | null> = {};
+      const initialCodingAnswers: Record<string, string> = {};
       for (const q of data.questions as PublicQuestion[]) {
-        initialAnswers[q.id] = q.selected_option_id;
+        initialAnswers[q.id] =
+          q.question_type === "coding"
+            ? q.answer_text
+              ? "coding"
+              : null
+            : q.selected_option_id;
         if (q.question_type === "coding") {
-          setCodingAnswers((prev) => ({
-            ...prev,
-            [q.id]: q.answer_text ?? q.coding_starter_code ?? "",
-          }));
+          initialCodingAnswers[q.id] =
+            q.answer_text ?? q.coding_starter_code ?? "";
           if (q.is_correct !== null) {
+            const isCorrect = q.is_correct;
             setQuestionResults((prev) => ({
               ...prev,
               [q.id]: {
-                isCorrect: q.is_correct,
-                message: q.is_correct ? "Jawaban benar." : "Jawaban salah.",
+                isCorrect,
+                message: isCorrect ? "Jawaban benar." : "Jawaban salah.",
                 checked: true,
               },
             }));
@@ -434,6 +567,8 @@ export default function KerjakanClient() {
         }
       }
       setAnswers(initialAnswers);
+      codingAnswersRef.current = initialCodingAnswers;
+      setCodingAnswers(initialCodingAnswers);
 
       const startedAt = new Date(data.attempt.started_at).getTime();
       const deadline = startedAt + data.exam.duration_minutes * 60 * 1000;
@@ -453,20 +588,47 @@ export default function KerjakanClient() {
   const submit = useCallback(async () => {
     if (!attemptId || submitting) return;
     setSubmitting(true);
+    setSubmitError(null);
     try {
-      await fetch(`/api/public/attempts/${attemptId}/submit`, {
+      const activeQuestion = questions[activeQuestionIndex];
+      if (activeQuestion?.question_type === "coding") {
+        await saveCodingAnswerImmediately(activeQuestion.id, {
+          answer_text: codingAnswersRef.current[activeQuestion.id] ?? "",
+        });
+      }
+      await flushAnswerSaves();
+      const response = await fetch(`/api/public/attempts/${attemptId}/submit`, {
         method: "POST",
       });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Gagal mengumpulkan ujian");
+      }
       router.replace(`/ujian/hasil?attempt=${attemptId}`);
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error
+          ? error.message
+          : "Jaringan bermasalah. Ulangi pengumpulan ujian.",
+      );
     } finally {
       setSubmitting(false);
     }
-  }, [attemptId, router, submitting]);
+  }, [
+    activeQuestionIndex,
+    attemptId,
+    flushAnswerSaves,
+    questions,
+    router,
+    saveCodingAnswerImmediately,
+    submitting,
+  ]);
 
   useEffect(() => {
     if (remainingSeconds === null) return;
     if (remainingSeconds <= 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-submit saat waktu habis
+      if (autoSubmitAttempted.current) return;
+      autoSubmitAttempted.current = true;
       submit();
       return;
     }
@@ -476,31 +638,29 @@ export default function KerjakanClient() {
     return () => clearInterval(interval);
   }, [remainingSeconds, submit]);
 
-  async function selectAnswer(questionId: string, optionId: string) {
+  function selectAnswer(questionId: string, optionId: string) {
     setAnswers((prev) => ({ ...prev, [questionId]: optionId }));
-    if (!attemptId) return;
-    await fetch(`/api/public/attempts/${attemptId}/answer`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        question_id: questionId,
-        selected_option_id: optionId,
-      }),
-    });
+    void queueAnswerSave(questionId, {
+      selected_option_id: optionId,
+    }).catch(() => undefined);
   }
 
-  async function saveCodingAnswer(questionId: string, code: string) {
+  function saveCodingAnswer(questionId: string, code: string) {
+    codingAnswersRef.current[questionId] = code;
     setCodingAnswers((prev) => ({ ...prev, [questionId]: code }));
     setAnswers((prev) => ({
       ...prev,
       [questionId]: code.trim() ? "coding" : null,
     }));
-    if (!attemptId) return;
-    await fetch(`/api/public/attempts/${attemptId}/answer`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question_id: questionId, answer_text: code }),
-    });
+  }
+
+  async function saveActiveCodingAnswer() {
+    const question = questions[activeQuestionIndex];
+    if (question?.question_type !== "coding") return;
+
+    await saveCodingAnswerImmediately(question.id, {
+      answer_text: codingAnswersRef.current[question.id] ?? "",
+    }).catch(() => undefined);
   }
 
   async function gradeCurrentQuestion(question: PublicQuestion) {
@@ -508,6 +668,10 @@ export default function KerjakanClient() {
 
     const code = codingAnswers[question.id] ?? "";
     if (!code.trim()) {
+      await saveCodingAnswerImmediately(question.id, {
+        answer_text: code,
+        is_correct: false,
+      });
       setQuestionResults((prev) => ({
         ...prev,
         [question.id]: {
@@ -544,17 +708,10 @@ export default function KerjakanClient() {
       },
     }));
 
-    if (attemptId) {
-      await fetch(`/api/public/attempts/${attemptId}/answer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question_id: question.id,
-          answer_text: code,
-          is_correct: evaluation.isCorrect,
-        }),
-      });
-    }
+    await saveCodingAnswerImmediately(question.id, {
+      answer_text: code,
+      is_correct: evaluation.isCorrect,
+    });
 
     if ((question.coding_language ?? "javascript") === "javascript") {
       const testCase = question.coding_test_cases?.[0];
@@ -602,15 +759,6 @@ export default function KerjakanClient() {
       return;
     }
 
-    await fetch(`/api/public/attempts/${attemptId}/answer`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        question_id: question.id,
-        answer_text: code,
-      }),
-    });
-
     await gradeCurrentQuestion(question);
   }
 
@@ -635,9 +783,10 @@ export default function KerjakanClient() {
     return next;
   }, [answers, codingAnswers, questions]);
 
-  function jumpToQuestion(questionId: string) {
+  async function jumpToQuestion(questionId: string) {
     const index = questions.findIndex((q) => q.id === questionId);
     if (index >= 0) {
+      await saveActiveCodingAnswer();
       setActiveQuestionIndex(index);
     }
     const el = questionRefs.current[questionId];
@@ -659,6 +808,18 @@ export default function KerjakanClient() {
           <p className='font-semibold text-danger'>
             {error ?? "Terjadi kesalahan"}
           </p>
+          {attemptId && (
+            <button
+              type='button'
+              onClick={() => {
+                setError(null);
+                setLoading(true);
+                void load();
+              }}
+              className='btn btn-secondary mt-4'>
+              Coba muat ulang
+            </button>
+          )}
         </div>
       </div>
     );
@@ -744,6 +905,35 @@ export default function KerjakanClient() {
       </header>
 
       <main className='mx-auto w-full max-w-[1500px] flex-1 px-3 py-3'>
+        {(saveError || submitError) && (
+          <div
+            role='alert'
+            className='mx-auto mb-3 flex max-w-375 flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800'>
+            <div>
+              {saveError && (
+                <p>
+                  Jawaban belum tersimpan ke server: {saveError}. Progres yang
+                  tersimpan tetap ada di database.
+                </p>
+              )}
+              {submitError && (
+                <p>
+                  Ujian belum berhasil dikumpulkan: {submitError}. Anda tetap
+                  berada di sesi ini dan dapat mencoba lagi.
+                </p>
+              )}
+            </div>
+            {saveError && (
+              <button
+                type='button'
+                onClick={() => void retryFailedSaves()}
+                disabled={retryingSaves || submitting}
+                className='btn btn-secondary text-sm'>
+                {retryingSaves ? "Menyimpan..." : "Coba simpan lagi"}
+              </button>
+            )}
+          </div>
+        )}
         <div className='grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px]'>
           <div className='min-w-0'>
             {questions[activeQuestionIndex] && (
@@ -814,6 +1004,7 @@ export default function KerjakanClient() {
                               e.target.value,
                             )
                           }
+                          disabled={submitting}
                           className='h-full w-full resize-y border-0 bg-transparent px-4 py-3 font-mono text-[13px] leading-6 text-slate-100 placeholder:text-slate-500 focus:outline-none selection:bg-cyan-500/30'
                           style={{
                             fontFamily:
@@ -897,6 +1088,7 @@ export default function KerjakanClient() {
                             type='radio'
                             name={questions[activeQuestionIndex].id}
                             checked={selected}
+                            disabled={submitting}
                             onChange={() =>
                               selectAnswer(
                                 questions[activeQuestionIndex].id,
@@ -942,9 +1134,10 @@ export default function KerjakanClient() {
                 <div className='mt-6 flex items-center justify-between gap-3'>
                   <button
                     type='button'
-                    onClick={() =>
-                      setActiveQuestionIndex((prev) => Math.max(0, prev - 1))
-                    }
+                    onClick={async () => {
+                      await saveActiveCodingAnswer();
+                      setActiveQuestionIndex((prev) => Math.max(0, prev - 1));
+                    }}
                     disabled={activeQuestionIndex === 0}
                     className='btn btn-secondary text-sm disabled:opacity-40'>
                     Sebelumnya
@@ -962,11 +1155,12 @@ export default function KerjakanClient() {
                   )}
                   <button
                     type='button'
-                    onClick={() =>
+                    onClick={async () => {
+                      await saveActiveCodingAnswer();
                       setActiveQuestionIndex((prev) =>
                         Math.min(questions.length - 1, prev + 1),
-                      )
-                    }
+                      );
+                    }}
                     disabled={activeQuestionIndex === questions.length - 1}
                     className='btn btn-primary text-sm disabled:opacity-40'>
                     Selanjutnya

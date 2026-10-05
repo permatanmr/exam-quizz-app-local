@@ -6,8 +6,42 @@ import type { AttemptRow, Question } from "@/lib/types";
 type DetailItem = {
   question: Question;
   selected_option_id: string | null;
-  is_correct: boolean;
+  answer_text: string | null;
+  is_correct: boolean | null;
 };
+
+const codeTokenPattern =
+  /(\/\*[\s\S]*?\*\/|\/\/[^\n]*|<!--[\s\S]*?-->|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|<\/?[a-zA-Z][^>]*>|\.[a-zA-Z_-][\w-]*|#[0-9a-fA-F]{3,8}\b|\b(?:const|let|var|function|return|if|else|for|while|new|await|async|true|false|null|undefined|class|extends|import|from|export|display|padding|margin|color|background|border|font-size|width|height|flex|grid)\b|\b\d+(?:\.\d+)?\b)/g;
+
+function highlightCode(code: string) {
+  return code.split(codeTokenPattern).map((token, index) => {
+    if (index % 2 === 0) return token;
+
+    let className: string | undefined;
+
+    if (/^(\/\/|\/\*|<!--)/.test(token)) {
+      className = "text-slate-500";
+    } else if (/^("|'|`)/.test(token)) {
+      className = "text-emerald-700";
+    } else if (/^<\/?[a-zA-Z]/.test(token)) {
+      className = "text-cyan-700";
+    } else if (/^\./.test(token)) {
+      className = "text-rose-700";
+    } else if (/^#/.test(token) || /^\d/.test(token)) {
+      className = "text-amber-700";
+    } else {
+      className = "text-violet-700";
+    }
+
+    return className ? (
+      <span key={index} className={className}>
+        {token}
+      </span>
+    ) : (
+      token
+    );
+  });
+}
 
 export default function GradesTab({
   examId,
@@ -385,32 +419,69 @@ export default function GradesTab({
                                 <p className='font-medium'>
                                   {i + 1}. {item.question.text}
                                 </p>
-                                <ul className='mt-1 flex flex-col gap-0.5 pl-4'>
-                                  {item.question.options.map((opt) => {
-                                    const isCorrectAnswer =
-                                      opt.id ===
-                                      item.question.correct_option_id;
-                                    const isSelected =
-                                      opt.id === item.selected_option_id;
-                                    return (
-                                      <li
-                                        key={opt.id}
-                                        className={
-                                          isCorrectAnswer
-                                            ? "font-semibold text-success"
-                                            : isSelected
-                                              ? "font-semibold text-danger"
-                                              : "text-muted"
-                                        }>
-                                        {opt.id}. {opt.text}
-                                        {isCorrectAnswer && " ✓ (kunci)"}
-                                        {isSelected &&
-                                          !isCorrectAnswer &&
-                                          " ✗ (dipilih)"}
-                                      </li>
-                                    );
-                                  })}
-                                </ul>
+                                {item.question.question_type === "coding" ? (
+                                  <div className='mt-2'>
+                                    <div className='mb-1 flex flex-wrap items-center gap-2'>
+                                      <span className='text-xs font-semibold text-muted'>
+                                        Jawaban mahasiswa
+                                      </span>
+                                      <span
+                                        className={`badge ${
+                                          !item.answer_text?.trim()
+                                            ? "bg-gray-100 text-gray-600"
+                                            : item.is_correct === null
+                                              ? "bg-yellow-100 text-yellow-700"
+                                              : item.is_correct
+                                                ? "bg-green-100 text-success"
+                                                : "bg-red-100 text-danger"
+                                        }`}>
+                                        {!item.answer_text?.trim()
+                                          ? "Belum dijawab"
+                                          : item.is_correct === null
+                                            ? "Belum dinilai"
+                                            : item.is_correct
+                                              ? "Benar"
+                                              : "Perlu diperiksa"}
+                                      </span>
+                                    </div>
+                                    <pre className='max-h-96 overflow-auto whitespace-pre-wrap wrap-break-word rounded-md border border-border bg-white p-3 font-mono text-xs leading-5'>
+                                      {item.answer_text?.trim() ? (
+                                        <code>
+                                          {highlightCode(item.answer_text)}
+                                        </code>
+                                      ) : (
+                                        "Belum ada jawaban."
+                                      )}
+                                    </pre>
+                                  </div>
+                                ) : (
+                                  <ul className='mt-1 flex flex-col gap-0.5 pl-4'>
+                                    {item.question.options.map((opt) => {
+                                      const isCorrectAnswer =
+                                        opt.id ===
+                                        item.question.correct_option_id;
+                                      const isSelected =
+                                        opt.id === item.selected_option_id;
+                                      return (
+                                        <li
+                                          key={opt.id}
+                                          className={
+                                            isCorrectAnswer
+                                              ? "font-semibold text-success"
+                                              : isSelected
+                                                ? "font-semibold text-danger"
+                                                : "text-muted"
+                                          }>
+                                          {opt.id}. {opt.text}
+                                          {isCorrectAnswer && " ✓ (kunci)"}
+                                          {isSelected &&
+                                            !isCorrectAnswer &&
+                                            " ✗ (dipilih)"}
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                )}
                               </div>
                             ))}
                           </div>

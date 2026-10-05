@@ -37,6 +37,7 @@ export async function GET(_request: Request, { params }: Params) {
     .all(attemptId) as {
     question_id: string;
     selected_option_id: string | null;
+    answer_text: string | null;
     is_correct: number | null;
   }[];
   const answerMap = new Map(answerRows.map((a) => [a.question_id, a]));
@@ -47,7 +48,8 @@ export async function GET(_request: Request, { params }: Params) {
     return {
       question: q,
       selected_option_id: answer?.selected_option_id ?? null,
-      is_correct: answer?.is_correct === 1,
+      answer_text: answer?.answer_text ?? null,
+      is_correct: answer?.is_correct == null ? null : answer.is_correct === 1,
     };
   });
 
